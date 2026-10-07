@@ -231,18 +231,18 @@ const C = [
 ];
 const CN = Object.fromEntries(C.map(c=>[c.k,c]));
 const SIG = [
-  ['q1dry','Q1 건성','설문'],['q1oily','Q1 지성','설문'],['q2','Q2 민감','설문'],
+  ['q2dry','Q2 건성','설문'],['q2oily','Q2 지성','설문'],['q4','Q4 민감','설문'],
   ['moisture','수분','스캔'],['oiliness','유분','스캔'],['redness','붉은기','스캔'],['acne','여드름','스캔'],
   ['poresAdj','모공(연령보정)','스캔'],['texture','피부결','스캔'],['spots','잡티','스캔'],['radiance','광채','스캔'],
   ['darkCircles','다크서클','스캔'],['wrinkles','주름','스캔'],['firmness','탄력','스캔'],['pai','눈가노화지수','스캔 합성'],['agePrior','나이 사전값','프로필 나이']
 ];
 const SIGN = Object.fromEntries(SIG.map(s=>[s[0],s[1]]));
 const W0 = {
-  hyd: {q1dry:.40, moisture:.40, texture:.20},
-  calm:{q2:.40, redness:.40, acne:.10, q1dry:.10},
+  hyd: {q2dry:.40, moisture:.40, texture:.20},
+  calm:{q4:.40, redness:.40, acne:.10, q2dry:.10},
   pig: {spots:.60, radiance:.25, darkCircles:.15},
   age: {wrinkles:.35, firmness:.25, pai:.20, agePrior:.15, texture:.05},
-  seb: {acne:.35, q1oily:.30, oiliness:.20, poresAdj:.15}
+  seb: {acne:.35, q2oily:.30, oiliness:.20, poresAdj:.15}
 };
 const CFG0 = {mu:75, sd:10, cuts:[25,45,65], prior:.10};
 let W = JSON.parse(JSON.stringify(W0)), CFG = JSON.parse(JSON.stringify(CFG0));
@@ -260,9 +260,9 @@ function sev(v){ return v==null?null:clip((CFG.mu-v)/(2*CFG.sd),0,1); }
 
 function signals(u){
   const s={}, sc=u.scan;
-  const q1={1:[1,0],2:[.5,.5],3:[0,1]}[u.q1];
-  s.q1dry=q1?q1[0]:null; s.q1oily=q1?q1[1]:null;
-  s.q2={1:1,2:.5,3:0}[u.q2]; if(s.q2===undefined) s.q2=null;
+  const q2={1:[1,0],2:[.5,.5],3:[0,1]}[u.q2];
+  s.q2dry=q2?q2[0]:null; s.q2oily=q2?q2[1]:null;
+  s.q4={1:1,2:.5,3:0}[u.q4]; if(s.q4===undefined) s.q4=null;
   if(sc){
     ['moisture','oiliness','redness','acne','pores','texture','spots','radiance','wrinkles','firmness','darkCircles'].forEach(k=>s[k]=sev(sc[k]));
     let n=0,d=0; for(const k in PAI){ if(sc[k]!=null){ n+=PAI[k]*sev(sc[k]); d+=PAI[k]; } }
@@ -320,7 +320,7 @@ function basePlan(u,R,capMax,capTag){
   const mainWhy='Q5에서 직접 고른 고민입니다. 점수와 관계없이 에센스 메인으로 유지합니다.';
 
   // 자극 상한
-  let cap={1:2,2:3,3:5}[u.q2]||3; const capWhy=[{1:'Q2 ① 자주',2:'Q2 ② 가끔',3:'Q2 ③ 거의 없음'}[u.q2]];
+  let cap={1:2,2:3,3:5}[u.q4]||3; const capWhy=[{1:'Q4 ① 자주',2:'Q4 ② 가끔',3:'Q4 ③ 거의 없음'}[u.q4]];
   if(u.age<20 && cap>3){ cap=3; capWhy.push('19세 이하'); }
   if(R.calm.level>=3){ if(cap>2) capWhy.push('진정 집중'); cap=Math.min(cap,2); }
   else if(R.calm.level>=2){ if(cap>3) capWhy.push('진정 관리'); cap=Math.min(cap,3); }
@@ -335,9 +335,9 @@ function basePlan(u,R,capMax,capTag){
 
   const steps=[];
   // 클렌저
-  let str={1:3,2:2,3:1}[u.q3]||2; const strN=['','약(약산성)','중','강'];
-  if(u.q1==1 && str>1) str--;
-  let cl='세안 폼', clIng=[], clWhy=`Q3 ${['','①','②','③'][u.q3]} → 세정력 ${strN[str]}${u.q1==1?' (건성이라 한 단계 하향)':''}`;
+  let str={1:3,2:2,3:1}[u.q1]||2; const strN=['','약(약산성)','중','강'];
+  if(u.q2==1 && str>1) str--;
+  let cl='세안 폼', clIng=[], clWhy=`Q1 ${['','①','②','③'][u.q1]} → 세정력 ${strN[str]}${u.q2==1?' (건성이라 한 단계 하향)':''}`;
   if(sensitive && str>2){ str=2; clWhy+=' · 민감해 세정력 상한 중'; }
   if(R.seb.level>=2){
     const a=s.acne||0, p=s.poresAdj||0, t=s.texture||0;
@@ -358,17 +358,17 @@ function basePlan(u,R,capMax,capTag){
   }[main];
   const strong = cap>=4 && (R[main].level||0)>=2;
   if(cap>=4 && !strong && ING.hi.join()!==ING.lo.join()) flags.push(['info','성분 강도',`${CN[main].nm} 점수가 ${R[main].score==null?'판정 불가':LVN[R[main].level]+' 단계'}라 고기능 성분 대신 순한 성분(${ING.lo[0]})으로 시작합니다.`]);
-  const ESS_T={1:'리치한 앰플',2:'세럼',3:'워터리 에센스'}[u.q1]||'세럼';
-  const essence={c:main,n:'에센스',what:`${CN[main].eff} ${ESS_T}`,ing:(strong?ING.hi:ING.lo).slice(),spec:[`Key_Efficacy ${CN[main].code}`,`제형 ${ESS_T} (Q1 ${['','①','②','③'][u.q1]})`],why:mainWhy};
+  const ESS_T={1:'리치한 앰플',2:'세럼',3:'워터리 에센스'}[u.q2]||'세럼';
+  const essence={c:main,n:'에센스',what:`${CN[main].eff} ${ESS_T}`,ing:(strong?ING.hi:ING.lo).slice(),spec:[`Key_Efficacy ${CN[main].code}`,`제형 ${ESS_T} (Q2 ${['','①','②','③'][u.q2]})`],why:mainWhy};
 
   // 분석 고민('관리' 이상) 최대 2개 → 우선순위대로 크림 → 로션(없으면 토너)
   const ageAdj=u.age<30?1:u.age<50?2:3, gAdj=u.gender==='M'?-1:0;
-  const TI=clip((+u.q4||2)+ageAdj+gAdj,1,5);
+  const TI=clip((+u.q3||2)+ageAdj+gAdj,1,5);
   const TIN=['','산뜻한 젤','라이트','일반','고보습','꾸덕한 영양'], LIN=['','워터리','가벼운','일반','고보습','리치'];
-  const tiWhy=`Texture_Index ${TI} = Q4 ${u.q4} + 연령 ${ageAdj}${gAdj?' − 1(남성)':''}`;
-  const tType={1:'점도 있는 흡수형',2:'밸런싱',3:'산뜻한 워터'}[u.q1]||'밸런싱';
-  const allInOne = u.gender==='M' && TI<=2 && (u.q1==3||u.q4==1) && u.q1!=1;
-  const skipLotion = !allInOne && u.gender==='M' && TI<=2 && u.q1!=1;
+  const tiWhy=`Texture_Index ${TI} = Q3 ${u.q3} + 연령 ${ageAdj}${gAdj?' − 1(남성)':''}`;
+  const tType={1:'점도 있는 흡수형',2:'밸런싱',3:'산뜻한 워터'}[u.q2]||'밸런싱';
+  const allInOne = u.gender==='M' && TI<=2 && (u.q2==3||u.q3==1) && u.q2!=1;
+  const skipLotion = !allInOne && u.gender==='M' && TI<=2 && u.q2!=1;
   let slots=['cream'].concat(allInOne||skipLotion?[]:['lotion']).concat(sensitive?[]:['toner']);
   const MAX_EXTRA=2;
   const rank=ORDER.filter(c=>c!==main && R[c].score!=null && R[c].conf>=.5 && (R[c].level||0)>=2 && !(sensitive&&c==='calm'))
@@ -377,7 +377,7 @@ function basePlan(u,R,capMax,capTag){
   if(sensitive) asg.toner='calm';
   const SLN={cream:allInOne?'올인원 로션':'크림',lotion:'로션',toner:'토너'};
   const leaveIng=(c,slot)=>({
-    hyd: slot==='cream' ? (u.q1==1?['세라마이드','판테놀']:['히알루론산','스쿠알란']) : ['히알루론산'],
+    hyd: slot==='cream' ? (u.q2==1?['세라마이드','판테놀']:['히알루론산','스쿠알란']) : ['히알루론산'],
     calm:['시카','판테놀'],
     pig:['나이아신아마이드','비타민C 유도체'],
     age:(slot==='cream' && cap>=4 && R.age.level>=2)?['레티놀','펩타이드']:['펩타이드','아데노신'],
@@ -472,7 +472,7 @@ const JS=(w,withB,noB)=>{ const ch=w.replace(/[^가-힣A-Za-z0-9]+$/,'').slice(-
   if(code<0||code>11171) return w+noB; const b=code%28; if(withB==='으로') return w+(b&&b!==8?'으로':'로'); return w+(b?withB:noB); };
 const ingLine=ing=>{ const ok=(ing||[]).filter(x=>ING_TXT[x]).slice(0,2); if(!ok.length) return ''; return ok.map(x=>`${JS(x,'은','는')} ${ING_TXT[x]}.`).join(' '); };
 const Q=c=>`‘${CON[c]}’`;
-const Q4T={1:'산뜻한 사용감',2:'적당한 수분감',3:'촉촉한 사용감'};
+const Q3T={1:'산뜻한 사용감',2:'적당한 수분감',3:'촉촉한 사용감'};
 const WEIGHT=['','가벼운','가벼운','적당한','보습감 있는','리치한'];
 function consumerCopy(u,R,P){
   const m=P.meta, main=P.main, picks=m.picks.slice();
@@ -489,30 +489,30 @@ function consumerCopy(u,R,P){
       else if(/^약산성 젤/.test(st.what)){ const q=[].concat(P.qcUsed||[]); t = (q.includes('rx')||q.includes('preg')) ? '피부결이 거친 편이지만 지금은 피부를 편안하게 유지하도록 각질 제거 대신 자극이 적은 약산성 젤 클렌저로 골랐어요.' : '피부결이 거친 편이지만 예민한 피부라 각질 제거 대신 자극이 적은 약산성 젤 클렌저로 골랐어요.'; }
       else if(/스크럽/.test(st.what)) t='피부결이 거친 편이라 각질을 부드럽게 정리하는 클렌저를 골랐어요.';
       else if(/저자극 폼/.test(st.what)) t='임신 중이셔서 자극 걱정이 적은 약산성 저자극 폼으로 골랐어요.';
-      else if(/진정 젤/.test(st.what)) t = u.q2==1 ? '피부가 예민한 편이라 자극이 적은 약산성 젤 클렌저로 골랐어요.' : '피부 분석에서 붉은기가 보여 자극이 적은 약산성 젤 클렌저로 골랐어요.';
-      else t={1:'뽀득한 세안감을 좋아하셔서 세정력이 좋은 폼을 골랐어요.',2:'개운하지만 당기지 않는 세안감을 원하셔서 적당한 세정력의 폼을 골랐어요.',3:'세안 후 촉촉함을 원하셔서 순한 폼을 골랐어요.'}[u.q3]||'';
-      if(u.q1==1 && !/진정 젤|저자극/.test(st.what)) t+=' 건조한 편이라 세정력은 한 단계 낮췄어요.';
+      else if(/진정 젤/.test(st.what)) t = u.q4==1 ? '피부가 예민한 편이라 자극이 적은 약산성 젤 클렌저로 골랐어요.' : '피부 분석에서 붉은기가 보여 자극이 적은 약산성 젤 클렌저로 골랐어요.';
+      else t={1:'뽀득한 세안감을 좋아하셔서 세정력이 좋은 폼을 골랐어요.',2:'개운하지만 당기지 않는 세안감을 원하셔서 적당한 세정력의 폼을 골랐어요.',3:'세안 후 촉촉함을 원하셔서 순한 폼을 골랐어요.'}[u.q1]||'';
+      if(u.q2==1 && !/진정 젤|저자극/.test(st.what)) t+=' 건조한 편이라 세정력은 한 단계 낮췄어요.';
     } else if(st.n==='토너'){
       if(m.sensitive){ const q=[].concat(P.qcUsed||[]);
-        t = u.q2==1 ? '화장품에 따갑거나 붉어진 경험이 있어 알코올 없는 진정 토너로 피부를 먼저 편안하게 해요.'
+        t = u.q4==1 ? '화장품에 따갑거나 붉어진 경험이 있어 알코올 없는 진정 토너로 피부를 먼저 편안하게 해요.'
           : (q.includes('preg')||q.includes('rx')) ? '피부를 편안하게 유지하도록 알코올 없는 진정 토너로 골랐어요.'
           : '피부 분석에서 붉은기가 보여 알코올 없는 진정 토너로 피부를 먼저 편안하게 해요.'; }
       else if(st.analytic) t=`피부 분석에서 ${JS(Q(st.c),'이','가')} ${JS(LVP[R[st.c].level],'으로')} 나와 토너로 함께 관리해요. `+ingLine(st.ing);
-      else t={1:'세안 후 당김이 있어 점도 있는 토너로 수분을 먼저 채워요.',2:'볼과 T존의 유수분 차이를 맞춰 주는 밸런싱 토너예요.',3:'번들거림이 신경 쓰이셔서 산뜻한 워터 토너로 골랐어요.'}[u.q1]||'';
+      else t={1:'세안 후 당김이 있어 점도 있는 토너로 수분을 먼저 채워요.',2:'볼과 T존의 유수분 차이를 맞춰 주는 밸런싱 토너예요.',3:'번들거림이 신경 쓰이셔서 산뜻한 워터 토너로 골랐어요.'}[u.q2]||'';
     } else if(st.n==='에센스'){
       t=`가장 시급한 고민으로 ${JS(Q(main),'을','를')} 고르셔서 메인 에센스로 넣었어요. `;
       const r=R[main];
       if(r.score!=null && r.level>=2) t+=`피부 분석에서도 ${JS(LVP[r.level],'으로')} 나타났어요. `;
       else if(r.score!=null) t+='피부 분석상으로는 아직 심하지 않아 순한 성분으로 꾸준히 관리하는 방향으로 골랐어요. ';
       t+=ingLine(st.ing);
-      t+=' '+({1:'세안 후 당김이 있는 피부라 보습감이 풍부한 앰플 타입으로 골랐어요.',2:'볼은 당기고 T존은 번들거리는 피부라 가볍게 스며드는 세럼 타입으로 골랐어요.',3:'번들거림이 신경 쓰이셔서 산뜻한 워터리 에센스 타입으로 골랐어요.'}[u.q1]||'');
+      t+=' '+({1:'세안 후 당김이 있는 피부라 보습감이 풍부한 앰플 타입으로 골랐어요.',2:'볼은 당기고 T존은 번들거리는 피부라 가볍게 스며드는 세럼 타입으로 골랐어요.',3:'번들거림이 신경 쓰이셔서 산뜻한 워터리 에센스 타입으로 골랐어요.'}[u.q2]||'');
     } else if(st.skip){ t='';
     } else {
       const isCream=st.n==='크림', allIn=/올인원/.test(st.what);
       if(st.analytic) t=`피부 분석에서 ${JS(Q(st.c),'이','가')} ${JS(LVP[R[st.c].level],'으로')} 나와 ${JS(allIn?'올인원 로션':st.n,'으로')} 함께 관리해요. `+ingLine(st.ing);
       else t=`${JS(allIn?'올인원 로션':st.n,'은','는')} 기본 보습에 집중했어요. `+ingLine(st.ing);
       if(allIn) t+=' 산뜻한 사용감을 좋아하셔서 로션과 크림을 하나로 줄였어요.';
-      else if(isCream) t+=` ${JS(Q4T[u.q4],'을','를')} 좋아하시는 점과 연령대 피부에 맞춰 ${WEIGHT[m.TI]} 제형으로 골랐어요.`;
+      else if(isCream) t+=` ${JS(Q3T[u.q3],'을','를')} 좋아하시는 점과 연령대 피부에 맞춰 ${WEIGHT[m.TI]} 제형으로 골랐어요.`;
     }
     out.steps[st.n]=t.trim();
   });
@@ -628,7 +628,7 @@ function exclusionOf(u,P){
 }
 function matchProducts(u,R,P){
   const ex=exclusionOf(u,P), out=[];
-  const ti=(P.meta&&P.meta.TI)||3, essT={1:'리치한 앰플',2:'세럼',3:'워터리 에센스'}[u.q1]||'세럼';
+  const ti=(P.meta&&P.meta.TI)||3, essT={1:'리치한 앰플',2:'세럼',3:'워터리 에센스'}[u.q2]||'세럼';
   const check=p=>{ const why=[];
     p.hits.forEach(h=>{ if(ex[h.g]) why.push(`${h.inci} (${h.g}${INCI_GRAY[h.inci]?' · 회색지대':''}) — ${ex[h.g].join(' · ')} 제외`); });
     if(p.irr>P.cap) why.push(`Irritation ${p.irr} > 상한 ${P.cap}`);
@@ -1039,15 +1039,15 @@ const SCANS=[
   ['good','건강한 편','#f0d6c0',SC({moisture:88,oiliness:84,redness:88,acne:90,pores:85,texture:87,spots:88,radiance:86,wrinkles:91,firmness:90,upperLid:91,lowerLid:90,eyeBags:88,darkCircles:85})]
 ];
 const QS=[
-  {k:'q1',t:'세안 후 아무것도 안 발랐을 때, 피부는 어떤가요?',o:[[1,'당기고 건조해요'],[2,'볼은 당기고 T존은 번들거려요'],[3,'전체적으로 유분기가 돌아요']]},
-  {k:'q2',t:'화장품을 바르고 따갑거나 붉어진 적이 있나요?',o:[[1,'자주 있어요'],[2,'가끔 있어요'],[3,'거의 없어요']]},
-  {k:'q3',t:'세안 중~끝나고 어떤 느낌이 좋은가요?',o:[[1,'뽀득하고 개운하게'],[2,'개운하되 당기지 않을 정도'],[3,'촉촉함이 남고 당기지 않게']]},
-  {k:'q4',t:'마지막 단계, 어떤 사용감이 좋은가요?',o:[[1,'산뜻하고 빠르게 흡수'],[2,'적당한 수분감과 윤기'],[3,'촉촉하고 쫀쫀한 보습감']]},
+  {k:'q2',t:'세안 후 아무것도 안 발랐을 때, 피부는 어떤가요?',o:[[1,'당기고 건조해요'],[2,'볼은 당기고 T존은 번들거려요'],[3,'전체적으로 유분기가 돌아요']]},
+  {k:'q4',t:'화장품을 바르고 따갑거나 붉어진 적이 있나요?',o:[[1,'자주 있어요'],[2,'가끔 있어요'],[3,'거의 없어요']]},
+  {k:'q1',t:'세안 중~끝나고 어떤 느낌이 좋은가요?',o:[[1,'뽀득하고 개운하게'],[2,'개운하되 당기지 않을 정도'],[3,'촉촉함이 남고 당기지 않게']]},
+  {k:'q3',t:'마지막 단계, 어떤 사용감이 좋은가요?',o:[[1,'산뜻하고 빠르게 흡수'],[2,'적당한 수분감과 윤기'],[3,'촉촉하고 쫀쫀한 보습감']]},
   {k:'q5',t:'지금 가장 시급한 고민 하나만 고른다면?',o:[['age','주름 · 탄력'],['pig','기미 · 잡티'],['seb','트러블 · 모공'],['hyd','건조함'],['calm','붉은기 · 예민함']]}
 ];
 const LVC=['좋아요','살펴볼 부분','관리 필요','집중 관리'];
 const MCOL={wrinkles:'#a0623a',spots:'#c9722e',pores:'#6f9a2d',texture:'#249e8f',redness:'#d6334a',oiliness:'#c9a227',moisture:'#3d72b8',acne:'#e2683f',firmness:'#7b56b8',radiance:'#d9849e',eyeBags:'#7d8590',darkCircles:'#5b6470',upperLid:'#b38a1e',lowerLid:'#a8623a'};
-const STEPS=['intro','profile','q3','q1','q4','q2','q5','scan','qc','result'];
+const STEPS=['intro','profile','q1','q2','q3','q4','q5','scan','qc','result'];
 let U={age:32,gender:'F'}, cur='intro', scanPick=null, hist=[];
 
 function go(s,push=true){ if(typeof stopCam==='function') stopCam(); if(push && cur!==s) hist.push(cur); cur=s; render(); window.scrollTo(0,0); }
