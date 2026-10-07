@@ -192,7 +192,7 @@ input[type=range]{width:100%;accent-color:var(--plum)}
     <div class="dots" id="dots" aria-hidden="true"></div>
   </div>
   <main id="screen" aria-live="polite"></main>
-  <div class="demo">프로토타입 · 카메라 대신 예시 피부로 스캔해요 · 제품명은 제품 DB 연결 후 표시</div>
+  <div class="demo">프로토타입 · 얼굴 스캔은 시연용 분석이에요 · 제품명은 제품 DB 연결 후 표시</div>
 </div>
 
 <script>
@@ -1074,9 +1074,8 @@ function render(){
       <div class="cambtns"><button class="btn ghost" id="camon">${U.photo?'다시 찍기':'사진 찍기'}</button><button class="btn ghost" id="photo">사진 불러오기</button></div>
       <input type="file" id="file" accept="image/*" hidden>
       <p class="camnote" id="mpstat">${MP.ready?'정밀 얼굴 인식 준비됨 · 얼굴 윤곽에 맞춰 영역을 잡아요':MP.failed?'정밀 얼굴 인식을 불러오지 못해 기본 가이드로 진행해요':'정밀 얼굴 인식을 준비하고 있어요…'}</p>
-      <p class="camnote">사진을 찍으면 피부를 직접 분석해요(실험 기능). 사진은 이 화면에서만 쓰고 저장하거나 전송하지 않아요. 사진이 없으면 아래 예시 피부로 해 볼 수 있어요.</p>
-      <div class="skins" id="skins">${SCANS.map(([k,n,c])=>`<button class="skin" data-k="${k}" aria-pressed="${scanPick===k}"><i style="background:${c}"></i>${n}</button>`).join('')}</div>
-      <div class="foot"><button class="btn" id="doscan"${(scanPick||U.photo)?'':' disabled'}>${U.photo?'사진으로 분석 시작':'예시 피부로 스캔 시작'}</button><button class="btn ghost" id="noscan">스캔 없이 진행</button></div>`;
+      <p class="camnote">사진을 찍으면 피부를 직접 분석해요(실험 기능). 사진은 이 화면에서만 쓰고 저장하거나 전송하지 않아요.</p>
+      <div class="foot"><button class="btn" id="doscan"${U.photo?'':' disabled'}>사진으로 분석 시작</button><button class="btn ghost" id="noscan">스캔 없이 진행</button></div>`;
   }
   else if(cur==='qc'){
     const R=score(U), P=plan(U,R); const qcArr=[].concat(U.qc||[]);
