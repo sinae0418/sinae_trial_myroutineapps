@@ -1017,13 +1017,13 @@ const SCANS=[
 const QS=[
   {k:'q1',t:'세안 후 아무것도 안 발랐을 때, 피부는 어떤가요?',o:[[1,'당기고 건조해요'],[2,'볼은 당기고 T존은 번들거려요'],[3,'전체적으로 유분기가 돌아요']]},
   {k:'q2',t:'화장품을 바르고 따갑거나 붉어진 적이 있나요?',o:[[1,'자주 있어요'],[2,'가끔 있어요'],[3,'거의 없어요']]},
-  {k:'q3',t:'세안 후 어떤 느낌이 좋으세요?',o:[[1,'뽀득하고 개운하게'],[2,'개운하되 당기지 않을 정도'],[3,'촉촉함이 남고 당기지 않게']]},
-  {k:'q4',t:'마지막 단계, 어떤 사용감이 좋으세요?',o:[[1,'산뜻하고 빠르게 흡수'],[2,'적당한 수분감과 윤기'],[3,'촉촉하고 쫀쫀한 보습감']]},
+  {k:'q3',t:'세안 중~끝나고 어떤 느낌이 좋은가요?',o:[[1,'뽀득하고 개운하게'],[2,'개운하되 당기지 않을 정도'],[3,'촉촉함이 남고 당기지 않게']]},
+  {k:'q4',t:'마지막 단계, 어떤 사용감이 좋은가요?',o:[[1,'산뜻하고 빠르게 흡수'],[2,'적당한 수분감과 윤기'],[3,'촉촉하고 쫀쫀한 보습감']]},
   {k:'q5',t:'지금 가장 시급한 고민 하나만 고른다면?',o:[['age','주름 · 탄력'],['pig','기미 · 잡티'],['seb','트러블 · 모공'],['hyd','건조함'],['calm','붉은기 · 예민함']]}
 ];
 const LVC=['좋아요','살펴볼 부분','관리 필요','집중 관리'];
 const MCOL={wrinkles:'#a0623a',spots:'#c9722e',pores:'#6f9a2d',texture:'#249e8f',redness:'#d6334a',oiliness:'#c9a227',moisture:'#3d72b8',acne:'#e2683f',firmness:'#7b56b8',radiance:'#d9849e',eyeBags:'#7d8590',darkCircles:'#5b6470',upperLid:'#b38a1e',lowerLid:'#a8623a'};
-const STEPS=['intro','profile','q1','q2','q3','q4','q5','scan','qc','result'];
+const STEPS=['intro','profile','q3','q1','q4','q2','q5','scan','qc','result'];
 let U={age:32,gender:'F'}, cur='intro', scanPick=null, hist=[];
 
 function go(s,push=true){ if(typeof stopCam==='function') stopCam(); if(push && cur!==s) hist.push(cur); cur=s; render(); window.scrollTo(0,0); }
@@ -1041,7 +1041,7 @@ function render(){
   topbar(); const m=$('screen'); let h='';
   if(cur==='intro'){
     h=`<div class="orbwrap" aria-hidden="true"><div class="orb a"></div><div class="orb b"></div><div class="orb c"></div><div class="drop"></div></div>
-      <div style="display:flex;flex-direction:column;gap:12px"><span class="kicker">My Routine Lab</span><h1>오늘의 피부에<br>꼭 맞는 다섯 단계</h1>
+      <div style="display:flex;flex-direction:column;gap:12px"><span class="kicker">My Routine Lab</span><h1>나의 피부에<br>꼭 맞는 다섯 단계</h1>
       <p class="lead">질문 다섯 개와 얼굴 스캔 한 번이면, 클렌저부터 크림까지 내 피부 고민에 맞춰 골라 드려요.</p></div>
       <div class="flow3"><div><b>01</b><span>간단한 질문 다섯 개</span></div><div><b>02</b><span>얼굴 스캔 14가지 분석</span></div><div><b>03</b><span>나만의 5단계 루틴</span></div></div>
       <div class="foot"><button class="btn" id="start">피부 진단 시작하기</button><p class="note" style="text-align:center">약 1분이면 끝나요</p></div>`;
@@ -1053,7 +1053,7 @@ function render(){
       <div class="foot"><button class="btn" id="next">다음</button></div>`;
   }
   else if(cur.startsWith('q')&&cur!=='qc'){
-    const q=QS.find(x=>x.k===cur), n=+cur.slice(1);
+    const q=QS.find(x=>x.k===cur), n=STEPS.indexOf(cur)-1;
     h=`<div style="display:flex;flex-direction:column;gap:8px"><span class="qnum">질문 ${n} / 5</span><h2>${esc(q.t)}</h2>${cur==='q5'?'<p class="lead">고른 고민은 루틴의 메인 에센스가 돼요.</p>':''}</div>
       <div class="opts" id="opts">${q.o.map(([v,t])=>`<button class="opt" data-v="${v}" aria-pressed="${String(U[cur])===String(v)}"><b>${esc(t)}</b>${ck}</button>`).join('')}</div>`;
   }
@@ -1071,8 +1071,8 @@ function render(){
         <line x1="70" y1="${128+0.5*76}" x2="130" y2="${128+0.5*76}" stroke="var(--ink2)" stroke-opacity=".25" stroke-dasharray="2 3"/>
         ${pts.map(([x,y],i)=>`<circle class="pt" cx="${x}" cy="${y}" r="3.2" fill="var(--plum)" style="animation-delay:${i*0.12}s"/>`).join('')}
       </svg><div class="chk" id="chk" hidden><span data-k="pos">위치</span><span data-k="dist">거리</span><span data-k="front">정면</span><span data-k="light">밝기</span></div><div class="smsg" id="smsg">${U.photo?'사진이 준비됐어요':'카메라를 켜거나 사진을 찍어 주세요'}</div></div>
-      <div class="cambtns"><button class="btn ghost" id="camon">${U.photo?'다시 찍기':'카메라 켜기'}</button><button class="btn ghost" id="photo">사진 찍기 · 불러오기</button></div>
-      <input type="file" id="file" accept="image/*" capture="user" hidden>
+      <div class="cambtns"><button class="btn ghost" id="camon">${U.photo?'다시 찍기':'사진 찍기'}</button><button class="btn ghost" id="photo">사진 불러오기</button></div>
+      <input type="file" id="file" accept="image/*" hidden>
       <p class="camnote" id="mpstat">${MP.ready?'정밀 얼굴 인식 준비됨 · 얼굴 윤곽에 맞춰 영역을 잡아요':MP.failed?'정밀 얼굴 인식을 불러오지 못해 기본 가이드로 진행해요':'정밀 얼굴 인식을 준비하고 있어요…'}</p>
       <p class="camnote">사진을 찍으면 피부를 직접 분석해요(실험 기능). 사진은 이 화면에서만 쓰고 저장하거나 전송하지 않아요. 사진이 없으면 아래 예시 피부로 해 볼 수 있어요.</p>
       <div class="skins" id="skins">${SCANS.map(([k,n,c])=>`<button class="skin" data-k="${k}" aria-pressed="${scanPick===k}"><i style="background:${c}"></i>${n}</button>`).join('')}</div>
@@ -1195,8 +1195,11 @@ function liveGuide(){ const v=$('vid'), ge=$('guideE'), msg=$('smsg'); if(!v||!g
   else if(r.outFrac>0.55) t='조금 뒤로 물러나 주세요';
   else if(r.meanY<70) t='조금 더 밝은 곳으로 가 주세요';
   else if(r.meanY>225) t='빛이 너무 강해요';
-  else { t='좋아요, 지금 촬영하세요'; ok=true; }
-  msg.textContent=t; ge.setAttribute('stroke', ok?'#3aa58b':'var(--ink2)'); ge.setAttribute('stroke-opacity', ok?'1':'.5'); ge.setAttribute('stroke-width', ok?'3':'2'); }
+  else { ok=true; }
+  const now=Date.now(); if(ok){ if(!okSince) okSince=now; } else okSince=0;
+  const prog=okSince?Math.min(1,(now-okSince)/1500):0;
+  if(ok) t=prog<1?`좋아요! 그대로 계세요 · ${Math.ceil((1-prog)*3)}`:'촬영했어요';
+  msg.textContent=t; if(prog>=1){ okSince=0; capture(); return; } ge.setAttribute('stroke', ok?'#3aa58b':'var(--ink2)'); ge.setAttribute('stroke-opacity', ok?'1':'.5'); ge.setAttribute('stroke-width', ok?'3':'2'); }
 function capture(){ const v=$('vid'); if(!stream||!v) return;
   const c=document.createElement('canvas'); c.width=v.videoWidth||640; c.height=v.videoHeight||480; c.getContext('2d').drawImage(v,0,0,c.width,c.height);
   U.photo=c.toDataURL('image/jpeg',.9); stopCam(); render(); }
@@ -1208,7 +1211,7 @@ function bind(){
   on('start',()=>go('profile'));
   const a=$('age'); if(a) a.oninput=()=>{ U.age=+a.value; $('ageo').textContent=a.value; };
   const g=$('gseg'); if(g) g.onclick=e=>{ const b=e.target.closest('button'); if(!b) return; U.gender=b.dataset.v; g.querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',x===b)); };
-  on('next',()=>go('q1'));
+  on('next',()=>go(STEPS[2]));
   const o=$('opts'); if(o) o.onclick=e=>{ const b=e.target.closest('.opt'); if(!b) return; const v=b.dataset.v; U[cur]=cur==='q5'?v:+v;
     o.querySelectorAll('.opt').forEach(x=>x.setAttribute('aria-pressed',x===b)); const nx=STEPS[STEPS.indexOf(cur)+1]; setTimeout(()=>go(nx),220); };
   const sk=$('skins'); if(sk) sk.onclick=e=>{ const b=e.target.closest('.skin'); if(!b) return; scanPick=b.dataset.k; if(U.photo){ delete U.photo; render(); return; } sk.querySelectorAll('.skin').forEach(x=>x.setAttribute('aria-pressed',x===b)); $('doscan').disabled=false; $('doscan').textContent='예시 피부로 스캔 시작'; };
@@ -1236,14 +1239,14 @@ function bind(){
       if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia) throw new Error('no-media');
       stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:{ideal:720}},audio:false});
       delete U.photo; const st=$('stage'); st.classList.add('has-photo'); const img=st.querySelector('img.shot'); if(img) img.remove();
-      v.srcObject=stream; v.hidden=false; await v.play(); btn.textContent='촬영하기'; $('smsg').textContent=MP.ready?'점선 타원 안에 얼굴을 맞춰 주세요':'정밀 얼굴 인식을 준비하고 있어요… 잠시만요'; okSince=0; liveTimer=setInterval(liveGuide,120);
+      v.srcObject=stream; v.hidden=false; await v.play(); const cb=document.querySelector('.cambtns'); if(cb) cb.style.display='none'; $('smsg').textContent=MP.ready?'점선 타원 안에 얼굴을 맞춰 주세요':'정밀 얼굴 인식을 준비하고 있어요… 잠시만요'; okSince=0; liveTimer=setInterval(liveGuide,120);
     }catch(err){ stream=null; const n=(err&&err.name)||'', fp=document.featurePolicy||document.permissionsPolicy;
       const blocked=(fp&&fp.allowsFeature&&!fp.allowsFeature('camera'))||n==='SecurityError'||(err&&err.message==='no-media');
-      const m=blocked?'이 화면(웹 미리보기)에서는 실시간 카메라가 막혀 있어요. 사진 찍기로 진행하거나 HTML 파일을 직접 열어 주세요'
+      const m=blocked?'이 화면(웹 미리보기)에서는 실시간 카메라가 막혀 있어요. 사진 불러오기로 진행하거나 HTML 파일을 직접 열어 주세요'
         :n==='NotAllowedError'?'카메라 권한이 차단돼 있어요. 주소창 왼쪽 자물쇠(또는 사이트 설정)에서 카메라를 허용한 뒤 다시 눌러 주세요'
         :n==='NotReadableError'||n==='AbortError'?'다른 프로그램(줌 · 팀즈 등)이 카메라를 쓰고 있어요. 그 프로그램을 끄고 다시 눌러 주세요'
-        :n==='NotFoundError'||n==='OverconstrainedError'?'연결된 카메라를 찾지 못했어요. 사진 찍기로 진행해 주세요'
-        :'카메라를 켜지 못했어요('+(n||'알 수 없는 오류')+'). 사진 찍기로 진행해 주세요';
+        :n==='NotFoundError'||n==='OverconstrainedError'?'연결된 카메라를 찾지 못했어요. 사진 불러오기로 진행해 주세요'
+        :'카메라를 켜지 못했어요('+(n||'알 수 없는 오류')+'). 사진 불러오기로 진행해 주세요';
       $('smsg').textContent=m; console.warn('camera',err); }
   });
   const qo=$('qcopts'); if(qo) qo.onclick=e=>{ const b=e.target.closest('.opt'); if(!b) return; U.qcDraft=tog(U.qcDraft||[],b.dataset.v,'none'); render(); };
