@@ -127,6 +127,30 @@ input[type=range]{width:100%;accent-color:var(--plum)}
 .pill.l2{background:var(--lilac);color:var(--plum)}
 .pill.l3{background:var(--plum);color:var(--plum-ink)}
 .pill.me{background:var(--mint);color:var(--ink)}
+.msum{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;text-align:center}
+.msum div{background:var(--sunk);border-radius:16px;padding:12px 6px;display:flex;flex-direction:column;gap:2px}
+.msum b{font-family:"Hahmlet",serif;font-size:24px;color:var(--plum)}
+.msum span{font-size:12px;color:var(--ink2)}
+.mfocus{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.mf{display:inline-flex;align-items:center;gap:6px;font-size:13.5px;font-weight:600;padding:6px 12px 6px 6px;border-radius:99px;border:1.5px solid var(--mc);color:var(--ink);text-decoration:none}
+.mf i{font-style:normal;width:20px;height:20px;border-radius:50%;background:var(--mc);color:#fff;font-size:11px;display:grid;place-items:center}
+.mf b{color:var(--mc)}
+.mgrp{display:flex;flex-direction:column;gap:10px}
+.mgrp h3{font-family:"Hahmlet",serif;font-size:17px;font-weight:600;padding:6px 4px 0}
+.mcard{gap:8px;scroll-margin-top:70px}
+.mtop{display:flex;justify-content:space-between;align-items:center}
+.mname{display:flex;align-items:center;gap:8px;font-weight:700;font-size:15.5px}
+.mname i{width:10px;height:10px;border-radius:50%;background:var(--mc)}
+.mname small{font-size:10.5px;font-weight:600;padding:1px 7px;border-radius:99px;background:var(--sunk);color:var(--muted)}
+.mrow{display:grid;grid-template-columns:44px 1fr;gap:12px;align-items:center}
+.mval{font-family:"Hahmlet",serif;font-size:26px;font-weight:700}
+.mbar{position:relative;height:10px;border-radius:99px;background:var(--sunk)}
+.mbar i{position:absolute;left:0;top:0;bottom:0;border-radius:99px}
+.mbar em{position:absolute;top:-5px;width:2px;height:20px;background:var(--ink);transform:translateX(-1px)}
+.mcmp{font-size:12.5px;color:var(--muted)}
+.mtxt{font-size:14px;color:var(--ink2);line-height:1.6}
+.mtip{font-size:13.5px;line-height:1.6;background:var(--sunk);border-radius:14px;padding:10px 12px;color:var(--ink2)}
+.mtip b{color:var(--ink)}
 .tl{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;position:relative}
 .tl::before{content:"";position:absolute;left:27px;top:30px;bottom:30px;width:1px;background:var(--line)}
 .tl li{display:grid;grid-template-columns:56px 1fr;gap:14px;padding-block:8px;position:relative}
@@ -1031,8 +1055,8 @@ $('back').onclick=()=>{ if(hist.length){ cur=hist.pop(); if(cur==='qc'){ delete 
 
 function topbar(){
   const tb=$('topbar'); if(cur==='intro'){ tb.hidden=true; return; }
-  tb.hidden=false; const idx=STEPS.indexOf(cur), showDots=(cur!=='result'&&cur!=='analysis');
-  $('dots').innerHTML=showDots?Array.from({length:8},(_,i)=>`<i class="${i<idx?'on':''}"></i>`).join(''):`<span class="tbtitle">${cur==='result'?'나의 루틴':'사진 분석 결과'}</span>`;
+  tb.hidden=false; const idx=STEPS.indexOf(cur), showDots=(cur!=='result'&&cur!=='analysis'&&cur!=='metrics');
+  $('dots').innerHTML=showDots?Array.from({length:8},(_,i)=>`<i class="${i<idx?'on':''}"></i>`).join(''):`<span class="tbtitle">${cur==='result'?'나의 루틴':cur==='metrics'?'피부 지표 상세':'사진 분석 결과'}</span>`;
   $('back').setAttribute('aria-hidden', hist.length?'false':'true');
 }
 const ck='<span class="ck" aria-hidden="true"></span>';
@@ -1091,6 +1115,7 @@ function render(){
   }
   else if(cur==='analysis'){ h=analysisHTML(); }
   else if(cur==='result'){ h=resultHTML(); }
+  else if(cur==='metrics'){ h=metricsHTML(); }
   m.innerHTML=h; bind();
   if(cur==='scan'&&!MP.ready&&!MP.failed) loadMP().then(()=>{ const st=$('mpstat'); if(st) st.textContent=MP.ready?'정밀 얼굴 인식 준비됨 · 얼굴 윤곽에 맞춰 영역을 잡아요':'정밀 얼굴 인식을 불러오지 못해 기본 가이드로 진행해요'; });
 }
@@ -1101,13 +1126,13 @@ function radar(R){
   const pt=(i,v)=>{ const a=-Math.PI/2+i*2*Math.PI/5; return [cx+Math.cos(a)*rad*v/100, cy+Math.sin(a)*rad*v/100]; };
   const ring=v=>ax.map((_,i)=>pt(i,v).join(',')).join(' ');
   let s=`<svg viewBox="-30 0 360 290" role="img" aria-label="피부 고민 지도">`;
-  [100,65,45,25].forEach(v=>{ s+=`<polygon points="${ring(v)}" fill="${v===100?'var(--sunk)':'none'}" stroke="var(--line)" stroke-width="1"/>`; });
+  [100,75,55,35].forEach(v=>{ s+=`<polygon points="${ring(v)}" fill="${v===100?'var(--sunk)':'none'}" stroke="var(--line)" stroke-width="1"${v===55?' stroke-dasharray="4 3"':''}/>`; });
   ax.forEach((_,i)=>{ const [x,y]=pt(i,100); s+=`<line x1="${cx}" y1="${cy}" x2="${x}" y2="${y}" stroke="var(--line)" stroke-width="1"/>`; });
-  const vals=ax.map(k=>R[k].score==null?0:R[k].score);
+  // 상태 = 100 − 고민 점수 → 좋은 고민은 바깥, 관리가 필요한 고민은 안쪽. 판정 불가는 보통(75)에 빈 점
+  const vals=ax.map(k=>R[k].score==null?75:100-R[k].score);
   s+=`<polygon points="${vals.map((v,i)=>pt(i,Math.max(v,3)).join(',')).join(' ')}" fill="var(--plum)" fill-opacity=".16" stroke="var(--plum)" stroke-width="2" stroke-linejoin="round"/>`;
-  ax.forEach((k,i)=>{ const [x,y]=pt(i,Math.max(vals[i],3)); s+=`<circle cx="${x}" cy="${y}" r="4.5" fill="${CN[k].col}" stroke="var(--paper)" stroke-width="2"/>`;
+  ax.forEach((k,i)=>{ const [x,y]=pt(i,Math.max(vals[i],3)), na=R[k].score==null; s+=`<circle cx="${x}" cy="${y}" r="4.5" fill="${na?'var(--paper)':CN[k].col}" stroke="${na?'var(--muted)':'var(--paper)'}" stroke-width="2"/>`;
     const [lx,ly]=pt(i,122); s+=`<text x="${lx}" y="${ly+4}" text-anchor="middle" font-size="12" font-weight="600" fill="var(--ink2)" font-family="Gothic A1, sans-serif">${CON[k].replace(' · ','·')}</text>`; });
-  s+=`<text x="${cx+4}" y="${cy-rad*.45+3}" font-size="9" fill="var(--muted)" font-family="Gothic A1, sans-serif">관리 45</text>`;
   return s+'</svg>';
 }
 /* 용기 일러스트 (단계별 형태) */
@@ -1121,6 +1146,66 @@ function vessel(n,col){
     '크림':`<svg viewBox="0 0 40 70"><rect x="4" y="38" width="32" height="26" rx="8" fill="${c}" fill-opacity=".85"/><rect x="3" y="29" width="34" height="11" rx="4" fill="var(--ink2)" fill-opacity=".45"/></svg>`
   };
   return V[n]||V['토너'];
+}
+
+
+/* 14개 지표 상세: 또래 비교 · 관리 우선순위 */
+const MGRP=[['수분 · 유분 균형',['moisture','oiliness','texture']],['붉은기 · 트러블',['redness','acne','pores']],['톤 · 색소',['spots','radiance','darkCircles']],['주름 · 탄력',['wrinkles','firmness']],['눈가',['upperLid','lowerLid','eyeBags']]];
+const MCON={moisture:'hyd',texture:'hyd',oiliness:'seb',acne:'seb',pores:'seb',redness:'calm',spots:'pig',radiance:'pig',darkCircles:'pig',wrinkles:'age',firmness:'age',upperLid:'age',lowerLid:'age',eyeBags:'age'};
+const MINFO={
+  moisture:['피부 속에 수분이 얼마나 채워져 있는지 봐요.','낮으면 당김 · 각질 · 잔주름이 쉽게 생겨요.','세안 후 바로 히알루론산 · 세라마이드로 수분을 채워 주세요.'],
+  oiliness:['피지가 얼마나 균형 있게 나오는지 봐요.','낮을수록 번들거림이 많고 화장이 쉽게 무너져요.','가벼운 젤 제형과 나이아신아마이드로 유분 균형을 맞춰 주세요.'],
+  texture:['피부 표면이 얼마나 매끄러운지 봐요.','낮으면 거칠고 울퉁불퉁해 보여요.','순한 각질 관리(PHA)와 충분한 보습을 함께 해 주세요.'],
+  redness:['볼 · 코 주변이 얼마나 붉은지 봐요.','낮으면 쉽게 예민해지고 화끈거릴 수 있어요.','시카 · 판테놀처럼 진정 성분을 쓰고, 자극 적은 제품을 골라 주세요.'],
+  acne:['붉은 트러블이 얼마나 있는지 봐요.','낮을수록 트러블이 많아요.','아젤라산 · LHA로 관리하고, 손으로 짜지 않는 게 좋아요.'],
+  pores:['모공이 얼마나 눈에 띄는지 봐요.','낮으면 모공이 넓어 보이고 피지가 쌓이기 쉬워요.','클레이 세안과 나이아신아마이드로 모공 주변을 정돈해 주세요.'],
+  spots:['기미 · 주근깨 같은 색소 점을 봐요.','낮을수록 잡티가 많거나 진해요.','비타민C 유도체 · 나이아신아마이드와 자외선 차단을 매일 함께 해 주세요.'],
+  radiance:['피부 톤이 얼마나 맑고 윤기 있는지 봐요.','낮으면 칙칙하고 피곤해 보여요.','보습과 톤 케어 성분을 함께 쓰면 맑아 보이는 데 도움이 돼요.'],
+  darkCircles:['눈 밑이 얼마나 어두운지 봐요.','낮을수록 눈 밑이 어두워 보여요.','충분한 수면과 비타민C 유도체가 든 눈가 제품이 도움이 돼요.'],
+  wrinkles:['이마 · 눈가 주름의 깊이와 양을 봐요.','낮을수록 주름이 깊거나 많아요.','밤에는 레티놀(또는 바쿠치올 · 펩타이드), 낮에는 자외선 차단을 챙겨 주세요.'],
+  firmness:['피부가 얼마나 탱탱하게 받쳐 주는지 봐요.','낮으면 볼 · 턱선이 처져 보여요.','펩타이드 · 아데노신으로 탄력을 꾸준히 관리해 주세요.'],
+  upperLid:['윗눈꺼풀이 눈을 얼마나 덮는지 봐요.','낮을수록 눈꺼풀이 처져 눈이 작아 보여요.','눈가 전용 탄력 제품을 가볍게 두드려 발라 주세요.'],
+  lowerLid:['아래 눈꺼풀이 얼마나 늘어졌는지 봐요.','낮으면 눈 아래가 처져 보여요.','눈가 보습과 탄력 케어를 함께 해 주세요.'],
+  eyeBags:['눈 밑이 얼마나 볼록한지 봐요.','낮을수록 눈 밑이 불룩해 보여요.','붓기를 줄이도록 수면 · 염분을 챙기고, 눈가 탄력 제품을 써 주세요.']
+};
+// 또래 평균: EON 연령대별 분포를 받기 전 임시값 (전체 평균 75, 노화 관련 지표는 나이에 따라 기울임)
+const AGE_W={pores:.4,texture:.3,spots:.5,radiance:.3,wrinkles:1,firmness:.9,upperLid:.7,lowerLid:.7,eyeBags:.6};
+function peerMean(k,age){ const mid=Math.floor(clip(age,15,69)/10)*10+5; return Math.round(75-(AGE_W[k]||0)*.35*(mid-42.5)); }
+function ncdf(z){ const t=1/(1+.2316419*Math.abs(z)), d=.3989423*Math.exp(-z*z/2), p=d*t*(.3193815+t*(-.3565638+t*(1.781478+t*(-1.821256+t*1.330274)))); return z>0?1-p:p; }
+function metricView(){
+  const v=U.scan||{}, age=U.age, band=Math.floor(clip(age,15,69)/10)*10, est=(U.ana&&U.ana.est)||[];
+  const R=score(U), P=plan(U,R);
+  const rows=PHOTO_KEYS.filter(k=>v[k]!=null).map(k=>{ const m=peerMean(k,age), z=(v[k]-m)/10, top=Math.max(1,Math.min(99,Math.round(100*(1-ncdf(z)))));
+    const st=v[k]<55||z<=-1?3:z<=-.5?2:z>=.5?0:1;
+    const steps=P.steps.filter(x=>!x.skip&&x.c===MCON[k]).map(x=>x.n);
+    return {k,v:Math.round(v[k]),m,z,top,st,steps,est:est.includes(k)}; });
+  return {rows,band,R,P};
+}
+const MST=[['또래보다 좋아요',''],['또래와 비슷해요',''],['관리가 필요해요',' l2'],['먼저 관리해요',' l3']];
+function metricsHTML(){
+  const {rows,band}=metricView();
+  const good=rows.filter(r=>r.st===0).length, mid=rows.filter(r=>r.st===1).length, need=rows.filter(r=>r.st>=2).length;
+  const focus=rows.filter(r=>r.st>=2).sort((a,b)=>a.z-b.z).slice(0,3);
+  const best=rows.filter(r=>r.st===0).sort((a,b)=>b.z-a.z).slice(0,2);
+  let h=`<div style="display:flex;flex-direction:column;gap:8px"><span class="qnum">피부 지표 상세</span><h2>${band}대 ${U.gender==='M'?'남성':'여성'}과 비교한<br>나의 피부 14가지</h2>
+    <p class="lead">같은 연령대 평균과 비교해서, 어떤 지표를 먼저 챙기면 좋을지 알려 드려요.</p></div>
+    <div class="card"><div class="msum"><div><b>${good}</b><span>또래보다 좋아요</span></div><div><b>${mid}</b><span>또래와 비슷해요</span></div><div><b>${need}</b><span>관리가 필요해요</span></div></div>
+      ${focus.length?`<div class="mfocus"><span class="note">먼저 챙길 지표</span>${focus.map((r,i)=>`<a href="#m-${r.k}" class="mf" style="--mc:${MCOL[r.k]}"><i>${i+1}</i>${METRIC_KO[r.k]}<b>${r.v}</b></a>`).join('')}</div>`:'<p class="note">또래보다 크게 부족한 지표가 없어요. 지금 루틴을 꾸준히 이어 가세요.</p>'}
+      ${best.length?`<p class="note">가장 좋은 지표: ${best.map(r=>`${METRIC_KO[r.k]}(또래 상위 ${r.top}%)`).join(' · ')}</p>`:''}</div>`;
+  MGRP.forEach(([g,ks])=>{ const rs=rows.filter(r=>ks.includes(r.k)); if(!rs.length) return;
+    h+=`<div class="mgrp"><h3>${g}</h3>`;
+    rs.forEach(r=>{ const [what,low,tip]=MINFO[r.k];
+      h+=`<div class="card mcard" id="m-${r.k}"><div class="mtop"><span class="mname" style="--mc:${MCOL[r.k]}"><i></i>${METRIC_KO[r.k]}${r.est?'<small>추정</small>':''}</span><span class="pill${MST[r.st][1]}">${MST[r.st][0]}</span></div>
+        <div class="mrow"><b class="mval">${r.v}</b><div class="mbar" role="img" aria-label="${METRIC_KO[r.k]} ${r.v}점, 또래 평균 ${r.m}점"><i style="width:${r.v}%;background:${MCOL[r.k]}"></i><em style="left:${r.m}%"></em></div></div>
+        <p class="mcmp">또래 평균 ${r.m}점 · ${r.v>=r.m?`또래 100명 중 상위 ${r.top}%`:`또래 평균보다 ${r.m-r.v}점 낮아요`}</p>
+        <p class="mtxt">${what} ${low}</p>
+        <p class="mtip"><b>이렇게 관리해요</b> ${tip}${r.steps.length?` 지금 루틴에서는 <b>${r.steps.join(' · ')}</b>${JS(r.steps.join(' · '),'이','가').slice(r.steps.join(' · ').length)} 이 부분을 맡고 있어요.`:''}</p></div>`; });
+    h+=`</div>`; });
+  const miss=PHOTO_KEYS.filter(k=>!U.scan||U.scan[k]==null);
+  if(miss.length) h+=`<p class="note">측정하지 못한 지표: ${miss.map(k=>METRIC_KO[k]).join(' · ')}</p>`;
+  h+=`<p class="note">또래 평균은 연령대별 실제 분포를 받기 전의 임시 기준이에요. 점수는 높을수록 좋아요.</p>
+    <div class="foot">${hist[hist.length-1]==='analysis'?'<button class="btn" id="toroutine">내 루틴 보기</button>':''}<button class="btn ghost" id="mback">돌아가기</button></div>`;
+  return h;
 }
 
 function analysisHTML(){
@@ -1146,21 +1231,22 @@ function analysisHTML(){
         <div><span>수분(추정)</span><b>${a.detail.flakes!=null?'각질 '+a.detail.flakes+'곳':'-'}</b><em>각질과 볼 윤기로 추정 · 실측 장비 값과 보정 전</em></div>
         <p class="note">눈꺼풀은 홍채 지름(약 11.7 mm)을 자로 써서 mm로 재요. 추정 지표는 실측의 절반 신뢰도로 반영해요.</p></div>`:''}
       <p class="note">수분 · 탄력 · 눈가 처짐은 사진 한 장으로 판단할 수 없어 측정하지 않았어요. 조명과 카메라에 따라 값이 달라질 수 있는 실험 기능이에요.</p></div>
+    <button class="btn ghost" id="tometrics">14개 지표 자세히 보기 · 또래 비교</button>
     <div class="foot"><button class="btn" id="toroutine">내 루틴 보기</button><button class="btn ghost" id="retake">다시 찍기</button></div>`;
 }
 function resultHTML(){
   const R=score(U), P=plan(U,R), CP=consumerCopy(U,R,P);
   const picks=[...new Set(P.meta.picks.map(p=>p.c))];
   let h=`<div class="hello"><span class="kicker">Your Routine</span><p class="serif">${esc(CP.head).replace(/‘([^’]+)’/g,'<b>‘$1’</b>')}</p></div>`;
-  h+=`<div class="card"><div class="hd"><h3>피부 고민 지도</h3><span class="note">바깥일수록 관리가 필요해요</span></div><div class="radar">${radar(R)}</div><div class="legend">`;
+  h+=`<div class="card"><div class="hd"><h3>피부 고민 지도</h3><span class="note">채워질수록 좋아요</span></div><div class="radar">${radar(R)}</div><p class="note" style="text-align:center">바깥으로 채워진 곳은 좋은 상태, 점선 안쪽으로 들어간 곳은 관리가 필요한 부분이에요</p><div class="legend">`;
   ['hyd','calm','pig','age','seb'].forEach(k=>{ const r=R[k]; const me=k===P.main, an=picks.includes(k);
     const lv=r.score==null?'스캔 필요':LVC[r.level];
     h+=`<div class="lg"><i style="background:${CN[k].col}"></i><span>${esc(CON[k])}${me?' <span class="pill me">내가 고른 고민</span>':an?' <span class="pill l2">분석 고민</span>':''}</span><span class="pill${r.level>=3?' l3':r.level>=2?' l2':''}">${lv}</span></div>`; });
   h+=`</div>${U.scan?'':'<p class="note">스캔 없이 진행해 기미 · 잡티는 판단하지 못했어요.</p>'}</div>`;
-  if(U.scan){ const src=U.scanSrc==='photo'?`사진 분석(실험) · 측정 ${U.scanN} / 14`:'예시 피부 값';
-    h+=`<details class="card"><summary class="hd" style="cursor:pointer;list-style:none"><h3>스캔 상세</h3><span class="note">${src}</span></summary><div class="legend">${PHOTO_KEYS.map(k=>{ const v=U.scan[k];
-      return `<div class="lg" style="grid-template-columns:1fr auto"><span>${METRIC_KO[k]}${(k==='spots'&&U.scanSrc==='photo'&&U.spotN!=null)?` <span class="note">(${U.spotN}곳)</span>`:''}</span><span class="pill${v==null?'':(v<55?' l3':v<65?' l2':'')}">${v==null?'측정 불가':Math.round(v)+'점'}</span></div>`; }).join('')}</div>
-      <p class="note">점수는 높을수록 좋아요(평균 약 75). ${U.scanSrc==='photo'?'사진 한 장으로는 수분 · 탄력 · 눈가 처짐을 판단할 수 없어 보통 수준으로 계산했어요. 조명과 카메라에 따라 값이 달라질 수 있는 실험 기능이에요.':'예시 피부의 값이에요.'}</p></details>`; }
+  if(U.scan){ const {rows}=metricView(); const f=rows.filter(r=>r.st>=2).sort((a,b)=>a.z-b.z).slice(0,3);
+    h+=`<div class="card"><div class="hd"><h3>피부 지표 14가지</h3><span class="note">또래 평균과 비교</span></div>
+      ${f.length?`<div class="mfocus"><span class="note">먼저 챙길 지표</span>${f.map((r,i)=>`<span class="mf" style="--mc:${MCOL[r.k]}"><i>${i+1}</i>${METRIC_KO[r.k]}<b>${r.v}</b></span>`).join('')}</div>`:'<p class="note">또래보다 크게 부족한 지표가 없어요.</p>'}
+      <button class="btn ghost" id="tometrics">14개 지표 자세히 보기</button></div>`; }
   h+=`<div class="hd" style="display:flex;justify-content:space-between;align-items:baseline;padding-top:4px"><h2 style="font-size:22px">나의 5단계 루틴</h2><span class="note">아침 · 저녁 순서대로</span></div><ol class="tl">`;
   P.steps.forEach(st=>{ const col=st.c?CN[st.c].col:null; const why=CP.steps[st.n]||st.why;
     h+=`<li${st.skip?' class="skipc"':''}><div class="vessel">${vessel(st.n, st.skip?null:col)}</div><div class="pcard${st.n==='에센스'?' main':''}"><div class="k">${st.n.toUpperCase()}${st.c&&!st.skip?`<span class="eff" style="background:${col}">${esc(CON[st.c])}</span>`:''}${st.n==='에센스'?'<span class="pill me" style="margin-left:auto">메인</span>':''}</div>
@@ -1227,6 +1313,9 @@ function bind(){
     else setTimeout(()=>{ U.scan=Object.assign({},SCANS.find(s=>s[0]===scanPick)[3]); U.scanSrc='example'; afterScan(); }, wait); });
   on('noscan',()=>{ stopCam(); U.scan=null; afterScan(); });
   on('toroutine',()=>afterScan());
+  on('tometrics',()=>go('metrics'));
+  on('mback',()=>{ $('back').click(); });
+  document.querySelectorAll('a.mf').forEach(a=>a.onclick=e=>{ e.preventDefault(); const t=document.querySelector(a.getAttribute('href')); if(t) t.scrollIntoView({behavior:'smooth',block:'start'}); });
   const cr=$('cmpr'); if(cr) cr.oninput=()=>{ $('cmpo').style.clipPath=`inset(0 0 0 ${cr.value}%)`; $('cmpb').style.left=cr.value+'%'; };
   on('retake',()=>{ delete U.photo; delete U.ana; U.scan=null; hist.pop(); cur='scan'; render(); });
   on('photo',()=>{ stopCam(); $('file').click(); });
