@@ -1170,10 +1170,10 @@ const MINFO={
 };
 // 또래 평균: EON 연령대별 분포를 받기 전 임시값 (전체 평균 75, 노화 관련 지표는 나이에 따라 기울임)
 const AGE_W={pores:.4,texture:.3,spots:.5,radiance:.3,wrinkles:1,firmness:.9,upperLid:.7,lowerLid:.7,eyeBags:.6};
-function peerMean(k,age){ const mid=Math.floor(clip(age,15,69)/10)*10+5; return Math.round(75-(AGE_W[k]||0)*.35*(mid-42.5)); }
+function peerMean(k,age){ const mid=Math.floor(clip(age,15,79)/10)*10+5; return Math.round(75-(AGE_W[k]||0)*.35*(mid-42.5)); }
 function ncdf(z){ const t=1/(1+.2316419*Math.abs(z)), d=.3989423*Math.exp(-z*z/2), p=d*t*(.3193815+t*(-.3565638+t*(1.781478+t*(-1.821256+t*1.330274)))); return z>0?1-p:p; }
 function metricView(){
-  const v=U.scan||{}, age=U.age, band=Math.floor(clip(age,15,69)/10)*10, est=(U.ana&&U.ana.est)||[];
+  const v=U.scan||{}, age=U.age, band=Math.floor(clip(age,15,79)/10)*10, est=(U.ana&&U.ana.est)||[];
   const R=score(U), P=plan(U,R);
   const rows=PHOTO_KEYS.filter(k=>v[k]!=null).map(k=>{ const m=peerMean(k,age), z=(v[k]-m)/10, top=Math.max(1,Math.min(99,Math.round(100*(1-ncdf(z)))));
     const st=v[k]<55||z<=-1?3:z<=-.5?2:z>=.5?0:1;
@@ -1299,7 +1299,6 @@ function bind(){
   on('next',()=>go(STEPS[2]));
   const o=$('opts'); if(o) o.onclick=e=>{ const b=e.target.closest('.opt'); if(!b) return; const v=b.dataset.v; U[cur]=cur==='q5'?v:+v;
     o.querySelectorAll('.opt').forEach(x=>x.setAttribute('aria-pressed',x===b)); const nx=STEPS[STEPS.indexOf(cur)+1]; setTimeout(()=>go(nx),220); };
-  const sk=$('skins'); if(sk) sk.onclick=e=>{ const b=e.target.closest('.skin'); if(!b) return; scanPick=b.dataset.k; if(U.photo){ delete U.photo; render(); return; } sk.querySelectorAll('.skin').forEach(x=>x.setAttribute('aria-pressed',x===b)); $('doscan').disabled=false; $('doscan').textContent='예시 피부로 스캔 시작'; };
   on('doscan',()=>{ stopCam(); const st=$('stage'); st.classList.add('scanning'); $('smsg').textContent='피부를 분석하고 있어요…'; $('doscan').disabled=true; $('noscan').disabled=true;
     requestAnimationFrame(()=>{ $('ring').style.strokeDashoffset='0'; });
     const reduce=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -1309,8 +1308,7 @@ function bind(){
           return lm?analyzeFace(im,lm):{ok:false,reason:'얼굴을 찾지 못했어요. 정면 얼굴이 잘 보이게 다시 찍어 주세요.'}; }
         catch(e){ return analyzePhoto(U.photo); } })().then(res=>{ setTimeout(()=>{
         if(!res.ok){ st.classList.remove('scanning'); $('ring').style.strokeDashoffset='603'; $('smsg').textContent=res.reason; $('doscan').disabled=false; $('noscan').disabled=false; return; }
-        U.scan=res.values; U.scanSrc='photo'; U.scanN=res.measured; U.spotN=res.spotCount; U.ana=res; go('analysis'); }, Math.max(0, wait-(Date.now()-t0))); }); }
-    else setTimeout(()=>{ U.scan=Object.assign({},SCANS.find(s=>s[0]===scanPick)[3]); U.scanSrc='example'; afterScan(); }, wait); });
+        U.scan=res.values; U.scanSrc='photo'; U.scanN=res.measured; U.spotN=res.spotCount; U.ana=res; go('analysis'); }, Math.max(0, wait-(Date.now()-t0))); }); } });
   on('noscan',()=>{ stopCam(); U.scan=null; afterScan(); });
   on('toroutine',()=>afterScan());
   on('tometrics',()=>go('metrics'));
