@@ -856,7 +856,7 @@ function faceRegions(P){
   // 미간: 두 눈썹 안쪽 끝 사이 ~ 콧등 시작
   const glab=hull([off(P(107),0.02,-0.1),off(P(336),-0.02,-0.1),off(P(55),0.04,0.05),off(P(285),-0.04,0.05),off(P(168),0,0)]);
   const excl=[hull(pts(I.eyeR)),hull(pts(I.eyeL)),hull(pts(I.browR)),hull(pts(I.browL)),hull(pts(I.lips))];
-  const nostPoly=hull(pts([98,327,2,97,326,64,294,240,460,75,305,166,392,79,309,99,328,141,370,94,19,164]).concat([off(P(1),-0.06,0.03),off(P(1),0.06,0.03),off(P(98),-0.04,0.02),off(P(327),0.04,0.02)]));
+  const nostPoly=hull(pts([98,327,2,97,326,64,294,240,460,75,305,79,309,99,328,94]).concat([off(P(98),-0.03,0.02),off(P(327),0.03,0.02)]));   // 콧구멍 · 콧볼 아래 그림자만
   excl.push(nostPoly); const nost=[];
   return {R,glab,excl,nost,oval:hull(pts(I.oval)),d,eR,eL,nose:P(1),ux,uy};
 }
@@ -947,9 +947,21 @@ function analyzeFace(img,lm,meta={}){
     const cb=128-0.168736*r-0.331264*gg+0.5*b, cr=128+0.5*r-0.418688*gg-0.081312*b; skin[i]=(cb>=77&&cb<=127&&cr>=133&&cr<=173&&L[i]>25)?1:0; }
   // ── 부위 라벨 지도 ──
   const ex=mask(F.excl,0.06*d,F.nost.map(q=>[q,0.07*d])), ov=mask([F.oval]);
-  const ZP={'이마':F.R['이마'],'미간':[F.glab],'코':F.R['코'],'오른볼':[F.R['볼'][0]],'왼볼':[F.R['볼'][1]],'턱':F.R['턱'],'눈밑':F.R['눈밑'],'눈가':F.R['눈가']};
-  const zl=new Int8Array(n).fill(-1);
-  ZONES.forEach((k,zi)=>{ const m=mask(ZP[k]); for(let i=0;i<n;i++) if(m[i]&&ov[i]&&!ex[i]) zl[i]=zi; });
+  // 얼굴 윤곽(가장자리 2mm 안쪽) 전체를 눈 · 눈썹 · 코 · 입 위치 기준으로 8개 부위에 빈틈없이 배정 (눈 · 눈썹 · 입술 · 콧구멍은 제외)
+  const zl=new Int8Array(n).fill(-1), lid=new Uint8Array(n);
+  { const ovE=blur(Float32Array.from(ov),RP(2)), em0={x:(F.eR.x+F.eL.x)/2,y:(F.eR.y+F.eL.y)/2}, u0=U_(em0), v0=V_(em0);
+    const nu=q=>(U_(q)-u0)/d, nvv=q=>(V_(q)-v0)/d, avgV=ids=>ids.reduce((a,i)=>a+nvv(P(i)),0)/ids.length, avgU=ids=>ids.reduce((a,i)=>a+Math.abs(nu(P(i))),0)/ids.length;
+    const bv=avgV(MP.idx.browR.concat(MP.idx.browL)), lidLo=avgV([145,374]), nb=nvv(P(168)), nt=nvv(P(2)), aw=avgU([98,327]), mv=avgV([61,291]), mw=avgU([61,291]), ocu=avgU([33,263]);
+    const Zi=Object.fromEntries(ZONES.map((z,i)=>[z,i]));
+    for(let i=0;i<n;i++){ if(!ov[i]||ovE[i]<0.98||ex[i]) continue; const q={x:i%cw,y:(i/cw)|0}, u=nu(q), v=nvv(q), au=Math.abs(u); let z=-1;
+      const noseW=0.11+(aw*0.9-0.11)*Math.max(0,Math.min(1,(v-nb)/Math.max(0.1,nt-nb)));
+      if(v<bv-0.04) z=Zi['이마'];
+      else if(v<lidLo+0.04){ if(au<0.17) z=Zi['미간']; else { z=Zi['눈가']; if(au<=ocu-0.04) lid[i]=1; } }   // 윗눈꺼풀 피부는 눈가에 넣되 쌍꺼풀 선이 주름으로 잡히지 않게 주름 계산에서는 뺌
+      else if(au<noseW&&v<nt+0.03) z=Zi['코'];
+      else if(v<lidLo+0.24&&au<ocu+0.02) z=Zi['눈밑'];
+      else if((v>nt&&au<mw+0.08)||(v>mv+0.12&&au<mw+0.25)) z=Zi['턱'];
+      else z=Zi[u<0?'오른볼':'왼볼'];
+      zl[i]=z; } }
   // ── 머리카락 제외: (a) 피부보다 훨씬 어두운 넓은 면 · 가늘고 긴 면  (b) 주변보다 뚜렷이 어두운 가는 선(길이 4mm 이상) → 0.4mm 넓혀 분석에서 뺌 ──
   const hairM=new Uint8Array(n); let hairPx=0;
   { const zIdx=[], zs=[]; for(let i=0;i<n;i++) if(zl[i]>=0){ zIdx.push(i); if(skin[i]&&(i%3===0)) zs.push(L[i]); }
@@ -993,7 +1005,7 @@ function analyzeFace(img,lm,meta={}){
   const mR=robust(allIdx,i=>Mel[i]), hR=robust(allIdx,i=>Hb[i]);
   const Mc=fill(Mel,mR.med), Hc=fill(Hb,hR.med), M1=blur(Mc,1), H1=blur(Hc,1), Mloc=blur(Mc,rS), Hloc=blur(Hc,rS);
   mark('prep');
-  const spotZ=cheeks.concat(fore,nose), poreZ=nose.concat(cheeks,fore), acneZ=cheeks.concat(fore,chin), wZ=fore.concat(glab,corner);   // 눈밑은 속눈썹 선과 구분이 어려워 주름에서 제외
+  const spotZ=cheeks.concat(fore,nose), poreZ=nose.concat(cheeks,fore), acneZ=cheeks.concat(fore,chin), wZ=fore.concat(glab,corner.filter(i=>!lid[i]));   // 눈밑은 속눈썹 선과 구분이 어려워 주름에서 제외
   // (1) 잡티: 멜라닌이 주변보다 높고 · 주변보다 어둡고 · 헤모글로빈(붉은기)이 주된 원인이 아닌 둥근 점
   const dMr=robust(spotZ,i=>M1[i]-Mloc[i]), tM=Math.max(3*dMr.sd,0.035);
   const spots=blobs(spotZ,i=>{ const dm=M1[i]-Mloc[i]; return inCore(i) && dm>tM && Lf[i]<Lloc[i]-2 && (H1[i]-Hloc[i])<0.8*dm+0.02; },i=>Lloc[i]-Lf[i],false,true)
@@ -1163,16 +1175,20 @@ function analyzeFace(img,lm,meta={}){
   // ── 지도 레이어 (거울 보기 · 좌우 반전) ──
   // 디자인: 분석 영역만 또렷하게, 밖은 어둡게 · 결과는 지표별 한 가지 색 · 부위 윤곽은 가는 흰 선 · 10mm 눈금자와 수치 캡션
   const k=Math.max(1,Math.min(2,760/cw)), OW=Math.round(cw*k), OH=Math.round(ch*k);
-  const soft=blur(Float32Array.from(use),1);
+  const soft=blur(Float32Array.from(use),1), ovS=blur(Float32Array.from(ov),RP(1.5));
   const bgImg=mono=>{ const c=document.createElement('canvas'); c.width=cw; c.height=ch; const x=c.getContext('2d'), im=x.createImageData(cw,ch), D=im.data;
-    for(let i=0;i<n;i++){ const j=i*4, r=raw[j],gg=raw[j+1],b=raw[j+2], gy=0.3*r+0.59*gg+0.11*b, m=soft[i], dk=gy*0.26+6;
+    for(let i=0;i<n;i++){ const j=i*4, r=raw[j],gg=raw[j+1],b=raw[j+2], gy=0.3*r+0.59*gg+0.11*b, m=soft[i], dk=(gy*0.26+6)+((gy*0.6+12)-(gy*0.26+6))*ovS[i];
       const ir=mono?gy*0.9+14:r, ig=mono?gy*0.9+14:gg, ib=mono?gy*0.9+16:b;
       D[j]=dk+(ir-dk)*m; D[j+1]=dk+(ig-dk)*m; D[j+2]=dk+(ib-dk)*m; D[j+3]=255; }
     x.putImageData(im,0,0); return c; };
   const BGc=bgImg(false), BGm=bgImg(true);
   const layer=bg=>{ const c=document.createElement('canvas'); c.width=OW; c.height=OH; const x=c.getContext('2d'); x.imageSmoothingQuality='high';
     x.save(); x.translate(OW,0); x.scale(-k,k); x.drawImage(bg,0,0); x.restore(); x.setTransform(-k,0,0,k,OW,0); x.lineJoin='round'; x.lineCap='round'; return {c,x}; };
-  const outline=(x,a=0.5)=>{ x.save(); x.strokeStyle=`rgba(255,255,255,${a})`; x.lineWidth=1.1/k; ZONES.forEach(kz=>ZP[kz].forEach(pl=>{ smoothPath(x,pl); x.stroke(); })); x.restore(); };
+  const bnd=new Uint8Array(n); for(let i=cw;i<n-cw;i++){ const z=zl[i]; if(z<0) continue; const xx=i%cw; if(xx<1||xx>=cw-1) continue; if(zl[i-1]<0||zl[i+1]<0||zl[i-cw]<0||zl[i+cw]<0) bnd[i]=2; else if(zl[i-1]!==z||zl[i+1]!==z||zl[i-cw]!==z||zl[i+cw]!==z) bnd[i]=1; }
+  const pixLayer=(fn)=>{ const t=document.createElement('canvas'); t.width=cw; t.height=ch; const tx=t.getContext('2d'), im=tx.createImageData(cw,ch), D=im.data;
+    for(let i=0;i<n;i++){ const c=fn(i); if(!c) continue; const j=i*4; D[j]=c[0]; D[j+1]=c[1]; D[j+2]=c[2]; D[j+3]=c[3]; } tx.putImageData(im,0,0); return t; };
+  const bndCv={}; const outline=(x,a=0.5,inner=false)=>{ const key=a+'|'+inner; bndCv[key]=bndCv[key]||pixLayer(i=>(bnd[i]===2||(inner&&bnd[i]))?[255,255,255,255*a]:null); x.save(); x.imageSmoothingEnabled=true; x.drawImage(bndCv[key],0,0); x.restore(); };
+  const zCent=ZONES.map((kz,zi)=>{ let sx=0,sy=0,c=0; for(let i=0;i<n;i++) if(zl[i]===zi){ const xx=i%cw; if((kz==='눈밑'||kz==='눈가')&&U_({x:xx,y:(i/cw)|0})>U_(F.nose)) continue; sx+=xx; sy+=(i/cw)|0; c++; } return c?{x:sx/c,y:sy/c}:null; });
   const pill=(x,X,Y,t,dot)=>{ x.font='600 12px system-ui,-apple-system,sans-serif'; const w=x.measureText(t).width+(dot?26:16);
     x.fillStyle='rgba(16,14,22,.74)'; x.beginPath(); x.roundRect?x.roundRect(X-w/2,Y-11,w,22,11):x.rect(X-w/2,Y-11,w,22); x.fill();
     if(dot){ x.fillStyle=dot; x.beginPath(); x.arc(X-w/2+11,Y,4,0,Math.PI*2); x.fill(); }
@@ -1210,16 +1226,15 @@ function analyzeFace(img,lm,meta={}){
     hud(x,`분석 면적 ${CM2(allIdx.length).toFixed(1)}cm² · 8개 부위`); layers.all=out(c); }
   // 부위 점수
   { const {c,x}=layer(BGm); const col=v2=>v2>=75?'#8f74e6':v2>=60?'#f0b44c':'#e04a74';
-    ZONES.forEach(kz=>{ const zz=zones[kz]; if(!zz) return; x.fillStyle=col(zz.all); x.globalAlpha=0.34; ZP[kz].forEach(pl=>{ smoothPath(x,pl); x.fill(); }); x.globalAlpha=1; });
-    outline(x,0.8);
-    const side={'오른볼':0,'왼볼':1};
-    ZONES.forEach(kz=>{ const zz=zones[kz]; if(!zz) return; const polys=kz in side?[ZP[kz][0]]:ZP[kz];
-      const pl=kz==='눈밑'||kz==='눈가'?[polys[0]]:polys, pts=[].concat(...pl), cx=pts.reduce((a,q)=>a+q.x,0)/pts.length, cy=pts.reduce((a,q)=>a+q.y,0)/pts.length;
-      text(x,cx,cy,kz+' '+zz.all,col(zz.all)); });
+    const hex=h=>[parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)];
+    const zc=ZONES.map(kz=>zones[kz]?hex(col(zones[kz].all)):null);
+    x.save(); x.imageSmoothingEnabled=true; x.drawImage(pixLayer(i=>{ const z=zl[i]; return z>=0&&zc[z]?[...zc[z],255*0.34*Math.max(0.35,soft[i])]:null; }),0,0); x.restore();
+    outline(x,0.8,true);
+    ZONES.forEach((kz,zi)=>{ const zz=zones[kz], ct=zCent[zi]; if(!zz||!ct) return; text(x,ct.x,ct.y,kz+' '+zz.all,col(zz.all)); });
     hud(x,'부위별 평균 점수'); layers.zone=out(c); }
   // 성분 지도 (분석 영역만 성분 농도 색, 밖은 어둡게)
   const chromo=(src,r0,sd,lo,hi)=>{ const c=document.createElement('canvas'); c.width=cw; c.height=ch; const x=c.getContext('2d'), im=x.createImageData(cw,ch), D=im.data;
-    for(let i=0;i<n;i++){ const j=i*4, gy=0.3*raw[j]+0.59*raw[j+1]+0.11*raw[j+2], dk=gy*0.22+6, m=soft[i], t=cl01(((src[i]-r0)/sd+1.5)/4.5);
+    for(let i=0;i<n;i++){ const j=i*4, gy=0.3*raw[j]+0.59*raw[j+1]+0.11*raw[j+2], dk=(gy*0.22+6)+((gy*0.55+10)-(gy*0.22+6))*ovS[i], m=soft[i], t=cl01(((src[i]-r0)/sd+1.5)/4.5);
       for(let q=0;q<3;q++){ const v2=lo[q]+(hi[q]-lo[q])*t; D[j+q]=dk+(v2-dk)*m; } D[j+3]=255; }
     x.putImageData(im,0,0); return layer(c); };
   { const {c,x}=chromo(blur(Mc,1),mR.med,Math.max(mR.sd,0.012),[248,240,228],[78,40,18]); outline(x,0.35);
