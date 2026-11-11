@@ -864,7 +864,7 @@ const REG_COL={'이마':'#d9824b','볼':'#3b6ea5','코':'#5f9e6e','눈밑':'#8e6
 // 부위 점수 지도에 쓰는 8개 부위 (오른볼 · 왼볼 = 본인 기준)
 const ZONES=['이마','미간','코','오른볼','왼볼','턱','눈밑','눈가'];
 // 점수 변환 기준 (실측 보정 전 임시값). [좋음 기준, 관리 기준]
-const CAL={spots:[0.002,0.02], acne:[0.2,1.9], pores:[3,16], texture:[1.2,3.2], oil:[0.01,0.12], wr:[1,8], red:[10,22],
+const CAL={spots:[0.002,0.02], acne:[0.2,1.9], pores:[3,16], texture:[1.2,3.2], oil:[0.01,0.12], wr:[1,8], red:[10,22], tilt:[8,0], hood:[0.85,0.6],
   sharpGood:0.5, sharpBad:0.3, sharpReject:0.15};
 
 // 선명도: 눈 주변(속눈썹 · 홍채 경계)의 가장 가파른 밝기 변화 ÷ 밝기 범위. 1에 가까울수록 1~2픽셀 안에서 경계가 바뀜
@@ -901,6 +901,23 @@ function analyzeFace(img,lm,meta={}){
     polys.forEach(p=>{ if(p.length<3) return; x.beginPath(); p.forEach((q,j)=>j?x.lineTo(q.x,q.y):x.moveTo(q.x,q.y)); x.closePath(); x.fill(); if(grow) x.stroke(); });
     circles.forEach(([q,r])=>{ x.beginPath(); x.arc(q.x,q.y,r,0,Math.PI*2); x.fill(); });
     const a=x.getImageData(0,0,cw,ch).data, m=new Uint8Array(n); for(let i=0;i<n;i++) m[i]=a[i*4+3]>127?1:0; return m; };
+  const blur=(arr,rad)=>{ const I=new Float64Array((cw+1)*(ch+1));
+    for(let y=0;y<ch;y++){ let row=0; for(let x=0;x<cw;x++){ row+=arr[y*cw+x]; I[(y+1)*(cw+1)+x+1]=I[y*(cw+1)+x+1]+row; } }
+    const o=new Float32Array(n);
+    for(let y=0;y<ch;y++) for(let x=0;x<cw;x++){ const a0=Math.max(0,x-rad),a1=Math.min(cw-1,x+rad),b0=Math.max(0,y-rad),b1=Math.min(ch-1,y+rad);
+      o[y*cw+x]=(I[(b1+1)*(cw+1)+a1+1]-I[b0*(cw+1)+a1+1]-I[(b1+1)*(cw+1)+a0]+I[b0*(cw+1)+a0])/((a1-a0+1)*(b1-b0+1)); } return o; };
+  // 덩어리 찾기 (4방향 · 8방향), 크기 · 모양 · 방향 계산
+  const blobs=(idx,cond,val,o8=false,keep=false)=>{ const m=new Uint8Array(n); for(const i of idx) if(cond(i)) m[i]=1; const seen=new Uint8Array(n), out=[];
+    const nb=o8?[-1,1,-cw,cw,-cw-1,-cw+1,cw-1,cw+1]:[-1,1,-cw,cw];
+    for(const s0 of idx){ if(!m[s0]||seen[s0]) continue; const st=[s0]; seen[s0]=1; let sz=0,sx=0,sy=0,sxx=0,syy=0,sxy=0,a0=cw,a1=0,b0=ch,b1=0,vs=0; const pix=keep?[]:null;
+      while(st.length){ const p=st.pop(); sz++; if(pix) pix.push(p); if(val) vs+=val(p); const x=p%cw,y=(p/cw)|0; sx+=x; sy+=y; sxx+=x*x; syy+=y*y; sxy+=x*y;
+        if(x<a0)a0=x; if(x>a1)a1=x; if(y<b0)b0=y; if(y>b1)b1=y;
+        for(const dq of nb){ const q=p+dq; if(q<0||q>=n||seen[q]||!m[q]) continue; const qx=q%cw; if(Math.abs(qx-x)>1) continue; seen[q]=1; st.push(q); } }
+      const w=a1-a0+1,h=b1-b0+1, cx=sx/sz, cy=sy/sz, vxx=sxx/sz-cx*cx, vyy=syy/sz-cy*cy, vxy=sxy/sz-cx*cy;
+      const tr=(vxx+vyy)/2, dd=Math.sqrt(((vxx-vyy)/2)**2+vxy*vxy), l1=tr+dd, l2=Math.max(0,tr-dd), ang=0.5*Math.atan2(2*vxy,vxx-vyy);
+      out.push({sz,cx,cy,r:Math.max(w,h)/2,elong:Math.max(w,h)/Math.max(1,Math.min(w,h)),fill:sz/(w*h),dk:vs/sz,len:Math.sqrt(12*l1+1),wid:Math.sqrt(12*l2+1),ang,z:zl[s0],pix,
+        de:2*Math.sqrt(sz/Math.PI)*mmpp,mm2:MM2(sz)}); }
+    return out; };
   const raw=g.getImageData(0,0,cw,ch).data;
   const LUT=new Float32Array(256); for(let c=0;c<256;c++){ const v=c/255; LUT[c]=v<=0.04045?v/12.92:Math.pow((v+0.055)/1.055,2.4); }
   // ── 화이트밸런스: 흰자위(홍채 · 동공 제외)의 밝은 무채색 픽셀을 기준으로 ──
@@ -933,6 +950,15 @@ function analyzeFace(img,lm,meta={}){
   const ZP={'이마':F.R['이마'],'미간':[F.glab],'코':F.R['코'],'오른볼':[F.R['볼'][0]],'왼볼':[F.R['볼'][1]],'턱':F.R['턱'],'눈밑':F.R['눈밑'],'눈가':F.R['눈가']};
   const zl=new Int8Array(n).fill(-1);
   ZONES.forEach((k,zi)=>{ const m=mask(ZP[k]); for(let i=0;i<n;i++) if(m[i]&&ov[i]&&!ex[i]) zl[i]=zi; });
+  // ── 머리카락 제외: (a) 피부보다 훨씬 어두운 넓은 면 · 가늘고 긴 면  (b) 주변보다 뚜렷이 어두운 가는 선(길이 4mm 이상) → 0.4mm 넓혀 분석에서 뺌 ──
+  const hairM=new Uint8Array(n); let hairPx=0;
+  { const zIdx=[], zs=[]; for(let i=0;i<n;i++) if(zl[i]>=0){ zIdx.push(i); if(skin[i]&&(i%3===0)) zs.push(L[i]); }
+    zs.sort((a,b)=>a-b); const medL0=zs.length?zs[zs.length>>1]:60;
+    const Lb=blur(L,RP(0.25)), Lw2=blur(L,RP(1.5)), hair=new Uint8Array(n);
+    blobs(zIdx,i=>L[i]<medL0-28&&ZONES[zl[i]]!=='눈밑',null,true,true).forEach(o=>{ if(o.mm2>=3||o.len/o.wid>=3) o.pix.forEach(q=>hair[q]=1); });   // 작고 둥근 점(점 · 잡티)은 남김
+    blobs(zIdx,i=>Lb[i]<Lw2[i]-10,null,true,true).forEach(o=>{ const len=o.len*mmpp, wid=o.wid*mmpp; if(len>=4&&len/wid>=4&&wid<1.0) o.pix.forEach(q=>hair[q]=1); });
+    const hb=blur(Float32Array.from(hair),RP(0.4));
+    for(let i=0;i<n;i++) if(zl[i]>=0&&hb[i]>0.02){ if(skin[i]) hairPx++; skin[i]=0; hairM[i]=1; } }
   const zidx=ZONES.map(()=>[]), zarea=ZONES.map(()=>0), use=new Uint8Array(n);
   for(let i=0;i<n;i++){ const z=zl[i]; if(z<0) continue; zarea[z]++; if(skin[i]){ zidx[z].push(i); use[i]=1; } }
   const Z=k=>zidx[ZONES.indexOf(k)];
@@ -940,11 +966,6 @@ function analyzeFace(img,lm,meta={}){
   const fore=Z('이마'), glab=Z('미간'), nose=Z('코'), cheekR=Z('오른볼'), cheekL=Z('왼볼'), cheeks=cheekR.concat(cheekL), chin=Z('턱'), under=Z('눈밑'), corner=Z('눈가');
   const allIdx=[].concat(...zidx);
   if(allIdx.length<500) return {ok:false,reason:'피부 영역이 충분히 보이지 않아요. 머리카락 · 손 · 안경을 치우고 다시 찍어 주세요.'};
-  const blur=(arr,rad)=>{ const I=new Float64Array((cw+1)*(ch+1));
-    for(let y=0;y<ch;y++){ let row=0; for(let x=0;x<cw;x++){ row+=arr[y*cw+x]; I[(y+1)*(cw+1)+x+1]=I[y*(cw+1)+x+1]+row; } }
-    const o=new Float32Array(n);
-    for(let y=0;y<ch;y++) for(let x=0;x<cw;x++){ const a0=Math.max(0,x-rad),a1=Math.min(cw-1,x+rad),b0=Math.max(0,y-rad),b1=Math.min(ch-1,y+rad);
-      o[y*cw+x]=(I[(b1+1)*(cw+1)+a1+1]-I[b0*(cw+1)+a1+1]-I[(b1+1)*(cw+1)+a0]+I[b0*(cw+1)+a0])/((a1-a0+1)*(b1-b0+1)); } return o; };
   const mean=(idx,arr)=>idx.length?idx.reduce((a,i)=>a+arr[i],0)/idx.length:NaN;
   const samp=(idx,fn,max=20000)=>{ const st=Math.max(1,Math.floor(idx.length/max)), o=[]; for(let j=0;j<idx.length;j+=st) o.push(fn(idx[j])); return o; };
   const qt=(a,q)=>{ if(!a.length) return NaN; const b=Float32Array.from(a).sort(); return b[Math.min(b.length-1,Math.max(0,Math.floor(q*(b.length-1))))]; };
@@ -971,23 +992,11 @@ function analyzeFace(img,lm,meta={}){
   const ITA=new Float32Array(n); for(let i=0;i<n;i++) ITA[i]=Math.atan((Lf[i]-50)/Math.max(Bc[i],0.5))*180/Math.PI;
   const mR=robust(allIdx,i=>Mel[i]), hR=robust(allIdx,i=>Hb[i]);
   const Mc=fill(Mel,mR.med), Hc=fill(Hb,hR.med), M1=blur(Mc,1), H1=blur(Hc,1), Mloc=blur(Mc,rS), Hloc=blur(Hc,rS);
-  // 덩어리 찾기 (4방향 · 8방향), 크기 · 모양 · 방향 계산
-  const blobs=(idx,cond,val,o8=false,keep=false)=>{ const m=new Uint8Array(n); for(const i of idx) if(cond(i)) m[i]=1; const seen=new Uint8Array(n), out=[];
-    const nb=o8?[-1,1,-cw,cw,-cw-1,-cw+1,cw-1,cw+1]:[-1,1,-cw,cw];
-    for(const s0 of idx){ if(!m[s0]||seen[s0]) continue; const st=[s0]; seen[s0]=1; let sz=0,sx=0,sy=0,sxx=0,syy=0,sxy=0,a0=cw,a1=0,b0=ch,b1=0,vs=0; const pix=keep?[]:null;
-      while(st.length){ const p=st.pop(); sz++; if(pix) pix.push(p); if(val) vs+=val(p); const x=p%cw,y=(p/cw)|0; sx+=x; sy+=y; sxx+=x*x; syy+=y*y; sxy+=x*y;
-        if(x<a0)a0=x; if(x>a1)a1=x; if(y<b0)b0=y; if(y>b1)b1=y;
-        for(const dq of nb){ const q=p+dq; if(q<0||q>=n||seen[q]||!m[q]) continue; const qx=q%cw; if(Math.abs(qx-x)>1) continue; seen[q]=1; st.push(q); } }
-      const w=a1-a0+1,h=b1-b0+1, cx=sx/sz, cy=sy/sz, vxx=sxx/sz-cx*cx, vyy=syy/sz-cy*cy, vxy=sxy/sz-cx*cy;
-      const tr=(vxx+vyy)/2, dd=Math.sqrt(((vxx-vyy)/2)**2+vxy*vxy), l1=tr+dd, l2=Math.max(0,tr-dd), ang=0.5*Math.atan2(2*vxy,vxx-vyy);
-      out.push({sz,cx,cy,r:Math.max(w,h)/2,elong:Math.max(w,h)/Math.max(1,Math.min(w,h)),fill:sz/(w*h),dk:vs/sz,len:Math.sqrt(12*l1+1),wid:Math.sqrt(12*l2+1),ang,z:zl[s0],pix,
-        de:2*Math.sqrt(sz/Math.PI)*mmpp,mm2:MM2(sz)}); }
-    return out; };
   mark('prep');
   const spotZ=cheeks.concat(fore,nose), poreZ=nose.concat(cheeks,fore), acneZ=cheeks.concat(fore,chin), wZ=fore.concat(glab,corner);   // 눈밑은 속눈썹 선과 구분이 어려워 주름에서 제외
   // (1) 잡티: 멜라닌이 주변보다 높고 · 주변보다 어둡고 · 헤모글로빈(붉은기)이 주된 원인이 아닌 둥근 점
   const dMr=robust(spotZ,i=>M1[i]-Mloc[i]), tM=Math.max(3*dMr.sd,0.035);
-  const spots=blobs(spotZ,i=>{ const dm=M1[i]-Mloc[i]; return inCore(i) && dm>tM && Lf[i]<Lloc[i]-2 && (H1[i]-Hloc[i])<0.8*dm+0.02; },i=>Lloc[i]-Lf[i])
+  const spots=blobs(spotZ,i=>{ const dm=M1[i]-Mloc[i]; return inCore(i) && dm>tM && Lf[i]<Lloc[i]-2 && (H1[i]-Hloc[i])<0.8*dm+0.02; },i=>Lloc[i]-Lf[i],false,true)
     .filter(o=>o.mm2>=0.8&&o.mm2<=80&&o.elong<2.5&&o.fill>0.35&&o.dk<20);
   spots.forEach(o=>{ o.cls=o.de<2?0:o.de<5?1:2; });
   // 넓은 색소 얼룩(기미처럼 경계가 흐린 면): 3mm 평균 멜라닌이 얼굴 중앙값보다 뚜렷이 높은 면적
@@ -1056,6 +1065,15 @@ function analyzeFace(img,lm,meta={}){
       const u=U_(c), vC=V_(c), vUp=lidAt(e.up,PO,u), vLo=lidAt(e.lo,PO,u);
       eyeMM.push({mrd1:(vC-vUp)*mm, mrd2:(vLo-vC)*mm, c:cc, up:(vUp-vC)*s, lo:(vLo-vC)*s}); }
     if(eyeMM.length){ mrd1=eyeMM.reduce((a,e)=>a+e.mrd1,0)/eyeMM.length; show=eyeMM.reduce((a,e)=>a+e.mrd2,0)/eyeMM.length-5.85; } }
+  // 눈꺼풀 높이(MRD1)는 타고난 생김새(홑꺼풀 · 두툼한 눈꺼풀) 영향이 커서, 처짐에 따라 변하는 신호를 함께 봄
+  //  · 눈꼬리 기울기: 바깥 눈꼬리가 안쪽보다 얼마나 높은지(°). 나이 들며 바깥 눈꼬리가 내려감
+  //  · 바깥쪽 덮임: 바깥 1/4 지점 눈 높이 ÷ 가운데 눈 높이. 윗눈꺼풀 바깥쪽이 처지면 작아짐
+  const tiltA=[], hoodA=[], canth=[];
+  for(const [e,outer,inner] of [[EYES[0],33,133],[EYES[1],263,362]]){ const o=P(outer), i2=P(inner), du=Math.abs(U_(o)-U_(i2)); if(du<5) continue;
+    tiltA.push(Math.atan2(V_(i2)-V_(o),du)*180/Math.PI); canth.push([i2,o]);
+    const gap=fr=>{ const u=U_(i2)+(U_(o)-U_(i2))*fr; return lidAt(e.lo,P,u)-lidAt(e.up,P,u); }, g50=gap(0.5);
+    if(g50>2) hoodA.push(gap(0.78)/g50); }
+  const avgA=a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:NaN, tilt=avgA(tiltA), hood=avgA(hoodA);
   // (2) 눈밑 지방: 아래 눈꺼풀에서 아래로 밝기 단면 → 볼록한 밝은 띠 다음 어두운 골의 깊이
   const at=(x,y)=>{ x=Math.round(x); y=Math.round(y); if(x<0||y<0||x>=cw||y>=ch) return NaN; const i=y*cw+x; return (skin[i]&&!ex[i])?Lb1[i]:NaN; };
   const bagC=[], grooveP=[];
@@ -1090,10 +1108,12 @@ function analyzeFace(img,lm,meta={}){
   const cl=cheeks.map(i=>L[i]).sort((x,y)=>x-y), sheen=cl.length>100?cl[Math.floor(cl.length*0.95)]-cl[cl.length>>1]:NaN;
   const shrink=x=>x==null?null:Math.round(75+0.5*(x-75));   // 추정 지표는 실측의 절반 신뢰도 → 평균(75) 쪽으로 당김
   const avg2=(p,q)=>p==null?q:q==null?p:(p+q)/2;
-  v.upperLid=sc(mrd1,4.5,2.0); v.lowerLid=sc(show,-0.5,1.5); v.eyeBags=sc(bag,2,10); v.darkCircles=sc(dc2,3,12);
+  const wav=ps=>{ const q=ps.filter(([x])=>x!=null); if(!q.length) return null; const w=q.reduce((a,[,b])=>a+b,0); return Math.round(q.reduce((a,[x,b])=>a+x*b,0)/w); };
+  const sTilt=sc(tilt,CAL.tilt[0],CAL.tilt[1]);
+  v.upperLid=wav([[sc(mrd1,3.5,1.5),0.4],[sc(hood,CAL.hood[0],CAL.hood[1]),0.35],[sTilt,0.25]]); v.lowerLid=wav([[sc(show,-0.5,1.5),0.6],[sTilt,0.4]]); v.eyeBags=sc(bag,2,10); v.darkCircles=sc(dc2,3,12);
   v.firmness=shrink(avg2(sc(fold,3,10),sc(droop,0.0,0.08))); v.moisture=shrink(avg2(sc(flakeD,0.1,1.1),sc(sheen,10,4)));
   const fx=(x,k=1)=>isFinite(x)?+x.toFixed(k):null;
-  const detail={mrd1:fx(mrd1), show:fx(show), bag:fx(bag), fold:fx(fold), droop:+droop.toFixed(3), flakeD:fx(flakeD,2), sheen:fx(sheen), flakes:flakes.length};
+  const detail={mrd1:fx(mrd1), show:fx(show), tilt:fx(tilt), hood:fx(hood,2), bag:fx(bag), fold:fx(fold), droop:+droop.toFixed(3), flakeD:fx(flakeD,2), sheen:fx(sheen), flakes:flakes.length};
 
   // ── 촬영 품질 판정 · 지표별 신뢰도 ──
   const cl01=x=>Math.max(0,Math.min(1,x));
@@ -1101,7 +1121,7 @@ function analyzeFace(img,lm,meta={}){
   const fR=0.4+0.6*cl01((pxmm-2)/2), fE=1-cl01((clipF-0.01)/0.15), fL=1-0.5*cl01((Math.abs(rawLR)-4)/10), fW=wb.ok?1:0.85, fY=1-0.5*cl01((Math.abs(yaw)-0.05)/0.2);
   const fC=ks=>cl01(ks.reduce((a,k)=>a+cov[k],0)/ks.length/70);
   const CF={spots:fS*fE*fW*fC(['이마','코','오른볼','왼볼']), redness:fW*fE*fL, acne:fS*fW*fC(['오른볼','왼볼','턱']), pores:fS*fS*fE*fR, texture:fS*fS*fR,
-    oiliness:fL, wrinkles:fS*fL*fC(['이마','눈가']), radiance:fE*fL*fW, darkCircles:fL*fY, upperLid:iris.length?fY:0.4, lowerLid:iris.length?fY:0.4,
+    oiliness:fL, wrinkles:fS*fL*fC(['이마','눈가']), radiance:fE*fL*fW, darkCircles:fL*fY, upperLid:(iris.length?fY:0.4)*0.75, lowerLid:(iris.length?fY:0.4)*0.8,
     eyeBags:fL*fY*0.8, firmness:0.5*fL*fY, moisture:0.5*fS*fE};
   const conf={}; for(const k in CF) conf[k]=v[k]==null?null:+cl01(CF[k]).toFixed(2);
   const lvTxt=(x,g2,b2,rev)=>{ const good=rev?x<=g2:x>=g2, bad=rev?x>b2:x<b2; return good?0:bad?2:1; };
@@ -1111,9 +1131,10 @@ function analyzeFace(img,lm,meta={}){
     {k:'조명 균일',st:lvTxt(Math.abs(rawLR),4,10,true),v:'좌우 밝기 차 '+Math.abs(rawLR).toFixed(1),tip:'한쪽 그림자'},
     {k:'화이트밸런스',st:wb.ok?0:1,v:wb.ok?'흰자위로 보정':'보정 못 함',tip:'조명 색 보정'},
     {k:'정면',st:lvTxt(Math.abs(yaw),0.06,0.15,true),v:Math.abs(yaw)<0.06?'정면':(yaw>0?'왼쪽':'오른쪽')+'으로 '+Math.round(Math.abs(yaw)*100)+'% 돌아감',tip:'고개 각도'},
-    {k:'해상도',st:pxmm>=4?0:pxmm>=2.5?1:2,v:pxmm.toFixed(1)+'px/mm'+(pxmm<4?' · 가까이서 찍으면 모공 · 결이 정확해져요':''),tip:'모공 · 결 정밀도'},
+    {k:'해상도',st:pxmm>=4?0:pxmm>=2.5?1:2,v:(meta.cam?'카메라 '+meta.cam+' · ':'')+pxmm.toFixed(1)+'px/mm'+(pxmm<4?' · 가까이서 찍으면 모공 · 결이 정확해져요':''),tip:'모공 · 결 정밀도'},
     {k:'크기 기준',st:scaleSrc==='홍채 지름'?0:1,v:scaleSrc==='홍채 지름'?'홍채 지름(11.7mm)으로 환산':'눈 사이 거리로 환산(홍채 인식 안 됨)',tip:'mm 환산'}
   ];
+  { const hp=allIdx.length?hairPx/(allIdx.length+hairPx):0; checks.push({k:'머리카락',st:hp<0.03?0:hp<0.12?1:2,v:hp<0.005?'가림 없음':'분석에서 '+(hp*100).toFixed(1)+'% 제외',tip:'머리카락 가림'}); }
   if(meta.frames) checks.push({k:'여러 장 합성',st:meta.frames.used>=3?0:meta.frames.used>=2?1:2,v:meta.frames.used+' / '+meta.frames.total+'장',tip:'노이즈 감소'});
   const bad=checks.filter(c=>c.st===2).length, mid2=checks.filter(c=>c.st===1).length;
   const grade=bad?'C':mid2>2?'B':'A';
@@ -1140,80 +1161,102 @@ function analyzeFace(img,lm,meta={}){
 
   mark('scores');
   // ── 지도 레이어 (거울 보기 · 좌우 반전) ──
-  const k=Math.max(1,Math.min(2,720/cw)), OW=Math.round(cw*k), OH=Math.round(ch*k);
-  const layer=(bgMode)=>{ const c=document.createElement('canvas'); c.width=OW; c.height=OH; const x=c.getContext('2d');
-    x.save(); x.translate(OW,0); x.scale(-k,k); x.drawImage(cv,0,0); x.restore();
-    if(bgMode==='dim'){ x.fillStyle='rgba(255,255,255,.28)'; x.fillRect(0,0,OW,OH); }
-    x.setTransform(-k,0,0,k,OW,0); return {c,x}; };
-  const text=(x,px,py,t,col)=>{ x.save(); x.setTransform(1,0,0,1,0,0); const X=OW-px*k, Y=py*k; x.font='600 13px system-ui,sans-serif';
-    const w=x.measureText(t).width+12; x.fillStyle='rgba(255,255,255,.9)'; x.beginPath(); x.roundRect?x.roundRect(X-w/2,Y-10,w,20,10):x.rect(X-w/2,Y-10,w,20); x.fill();
-    x.fillStyle=col||'#1b1b24'; x.textAlign='center'; x.textBaseline='middle'; x.fillText(t,X,Y+0.5); x.restore(); };
-  const out=c=>c.toDataURL('image/jpeg',0.86);
-  // 성분 지도: 피부는 성분 농도를 색으로, 피부 밖은 흐린 흑백
-  const chromo=(src,r0,sd,lo,hi)=>{ const c=document.createElement('canvas'); c.width=cw; c.height=ch; const x=c.getContext('2d'), im=x.createImageData(cw,ch), D=im.data;
-    for(let i=0;i<n;i++){ const j=i*4;
-      if(use[i]){ const t=cl01(((src[i]-r0)/sd+1.5)/4.5); for(let q=0;q<3;q++) D[j+q]=lo[q]+(hi[q]-lo[q])*t; }
-      else { const gy=0.3*raw[j]+0.59*raw[j+1]+0.11*raw[j+2]; D[j]=D[j+1]=D[j+2]=gy*0.45+70; } D[j+3]=255; }
-    x.putImageData(im,0,0); const L2=layer(); L2.x.drawImage(c,0,0); return L2; };
+  // 디자인: 분석 영역만 또렷하게, 밖은 어둡게 · 결과는 지표별 한 가지 색 · 부위 윤곽은 가는 흰 선 · 10mm 눈금자와 수치 캡션
+  const k=Math.max(1,Math.min(2,760/cw)), OW=Math.round(cw*k), OH=Math.round(ch*k);
+  const soft=blur(Float32Array.from(use),1);
+  const bgImg=mono=>{ const c=document.createElement('canvas'); c.width=cw; c.height=ch; const x=c.getContext('2d'), im=x.createImageData(cw,ch), D=im.data;
+    for(let i=0;i<n;i++){ const j=i*4, r=raw[j],gg=raw[j+1],b=raw[j+2], gy=0.3*r+0.59*gg+0.11*b, m=soft[i], dk=gy*0.26+6;
+      const ir=mono?gy*0.9+14:r, ig=mono?gy*0.9+14:gg, ib=mono?gy*0.9+16:b;
+      D[j]=dk+(ir-dk)*m; D[j+1]=dk+(ig-dk)*m; D[j+2]=dk+(ib-dk)*m; D[j+3]=255; }
+    x.putImageData(im,0,0); return c; };
+  const BGc=bgImg(false), BGm=bgImg(true);
+  const layer=bg=>{ const c=document.createElement('canvas'); c.width=OW; c.height=OH; const x=c.getContext('2d'); x.imageSmoothingQuality='high';
+    x.save(); x.translate(OW,0); x.scale(-k,k); x.drawImage(bg,0,0); x.restore(); x.setTransform(-k,0,0,k,OW,0); x.lineJoin='round'; x.lineCap='round'; return {c,x}; };
+  const outline=(x,a=0.5)=>{ x.save(); x.strokeStyle=`rgba(255,255,255,${a})`; x.lineWidth=1.1/k; ZONES.forEach(kz=>ZP[kz].forEach(pl=>{ smoothPath(x,pl); x.stroke(); })); x.restore(); };
+  const pill=(x,X,Y,t,dot)=>{ x.font='600 12px system-ui,-apple-system,sans-serif'; const w=x.measureText(t).width+(dot?26:16);
+    x.fillStyle='rgba(16,14,22,.74)'; x.beginPath(); x.roundRect?x.roundRect(X-w/2,Y-11,w,22,11):x.rect(X-w/2,Y-11,w,22); x.fill();
+    if(dot){ x.fillStyle=dot; x.beginPath(); x.arc(X-w/2+11,Y,4,0,Math.PI*2); x.fill(); }
+    x.fillStyle='#fff'; x.textAlign='center'; x.textBaseline='middle'; x.fillText(t,X+(dot?5:0),Y+0.5); };
+  const text=(x,px,py,t,dot)=>{ x.save(); x.setTransform(1,0,0,1,0,0); pill(x,OW-px*k,py*k,t,dot); x.restore(); };
+  const hud=(x,cap)=>{ x.save(); x.setTransform(1,0,0,1,0,0);
+    const L10=10*pxmm*k, X1=OW-16, X0=X1-L10, Y0=OH-48;
+    x.strokeStyle='rgba(255,255,255,.95)'; x.lineWidth=2; x.beginPath(); x.moveTo(X0,Y0-5); x.lineTo(X0,Y0); x.lineTo(X1,Y0); x.lineTo(X1,Y0-5); x.stroke();
+    x.font='600 11px system-ui,-apple-system,sans-serif'; x.fillStyle='rgba(255,255,255,.95)'; x.textAlign='center'; x.textBaseline='bottom'; x.fillText('10 mm',(X0+X1)/2,Y0-4);
+    if(cap){ x.font='600 12px system-ui,-apple-system,sans-serif'; const w=x.measureText(cap).width+18; pill(x,OW-16-w/2,OH-24,cap); }
+    x.restore(); };
+  const heat=(x,val,col,maxA)=>{ const t=document.createElement('canvas'); t.width=cw; t.height=ch; const tx=t.getContext('2d'), im=tx.createImageData(cw,ch), D=im.data;
+    for(let i=0;i<n;i++){ const a=val(i); if(!(a>0)) continue; const j=i*4; D[j]=col[0]; D[j+1]=col[1]; D[j+2]=col[2]; D[j+3]=255*Math.min(maxA,a)*soft[i]; }
+    tx.putImageData(im,0,0); x.save(); x.imageSmoothingEnabled=true; x.drawImage(t,0,0); x.restore(); };
+  const shape=(x,o,col,fillA)=>{ const S=new Set(o.pix); x.fillStyle=col;
+    if(fillA){ x.globalAlpha=fillA; o.pix.forEach(q=>x.fillRect(q%cw,(q/cw)|0,1,1)); x.globalAlpha=1; }
+    o.pix.forEach(q=>{ if(!S.has(q-1)||!S.has(q+1)||!S.has(q-cw)||!S.has(q+cw)) x.fillRect(q%cw-0.15,((q/cw)|0)-0.15,1.3,1.3); }); };
+  const dotAt=(x,px,py,r,col)=>{ x.fillStyle=col; x.beginPath(); x.arc(px,py,r,0,Math.PI*2); x.fill(); };
+  const ring=(x,px,py,r,col,w=1.6)=>{ x.strokeStyle=col; x.lineWidth=w/k; x.beginPath(); x.arc(px,py,r,0,Math.PI*2); x.stroke(); };
+  const out=c=>c.toDataURL('image/jpeg',0.88);
+  const COL={spot:['#5fe1ff','#3d8bff','#ff5fae'],pore:'#3fe6ff',poreBig:'#ff5fae',acne:'#ff4f7b',wr:'#4c8dff',wrDeep:'#2348e0',oil:[255,206,40],red:[255,64,96],tex:[168,110,255],groove:'#8fe0ff',fold:'#ffae4a',flake:'#ffffff'};
+  const oilM=new Float32Array(n); for(let i=0;i<n;i++) oilM[i]=(use[i]&&isOil(i))?1:0; const oilS=blur(oilM,1);
+  const aRef=mean(allIdx,A);
   const layers={};
-  // 종합 (예전 첫 화면과 같은 구성): 붉은기 음영 · 제외 부분 · 부위 윤곽 · 번들 · 모공 · 잡티 · 각질 · 눈밑 골 · 팔자선 · 트러블
-  { const {c,x}=layer(); const t2=document.createElement('canvas'); t2.width=cw; t2.height=ch; const tx=t2.getContext('2d'), im=tx.createImageData(cw,ch), D=im.data, aRef=mean(allIdx,A);
-    for(let i=0;i<n;i++){ if(zl[i]<0) continue; const j=i*4;
-      if(!skin[i]){ D[j]=120; D[j+1]=130; D[j+2]=160; D[j+3]=150; continue; }
-      const e=A[i]-aRef-3; if(e>0){ D[j]=225; D[j+1]=40; D[j+2]=60; D[j+3]=Math.min(150,e*22); } }
-    tx.putImageData(im,0,0); x.drawImage(t2,0,0);
-    x.lineWidth=2.4/k; x.lineJoin='round'; for(const kk in F.R){ x.strokeStyle=REG_COL[kk]; F.R[kk].forEach(poly=>{ smoothPath(x,poly); x.stroke(); }); }
-    x.fillStyle='rgba(255,214,0,.9)'; for(let i=0;i<n;i++) if(zl[i]>=0&&isOil(i)) x.fillRect(i%cw,(i/cw)|0,1,1);
-    x.fillStyle='rgba(20,20,20,.85)'; pores.forEach(o=>{ x.beginPath(); x.arc(o.cx,o.cy,Math.max(1.4/k,o.r*0.6),0,Math.PI*2); x.fill(); });
-    x.fillStyle='rgba(176,96,40,.9)'; x.strokeStyle='rgba(255,255,255,.8)'; x.lineWidth=1/k;
-    spots.forEach(o=>{ x.beginPath(); x.arc(o.cx,o.cy,Math.max(2.5/k,o.r*0.8),0,Math.PI*2); x.fill(); x.stroke(); });
-    x.fillStyle='rgba(255,255,255,.95)'; flakes.forEach(o=>{ x.beginPath(); x.arc(o.cx,o.cy,1.8/k,0,Math.PI*2); x.fill(); });
-    x.fillStyle='rgba(80,190,255,.95)'; grooveP.forEach(q=>{ x.beginPath(); x.arc(q.x,q.y,2.4/k,0,Math.PI*2); x.fill(); });
-    x.save(); x.setLineDash([6/k,5/k]); x.strokeStyle='rgba(255,150,40,.95)'; x.lineWidth=2/k; foldLines.forEach(([q1,q2])=>{ x.beginPath(); x.moveTo(q1.x,q1.y); x.lineTo(q2.x,q2.y); x.stroke(); }); x.restore();
-    x.strokeStyle='#ff3b55'; x.lineWidth=2/k; acne.forEach(o=>{ x.beginPath(); x.arc(o.cx,o.cy,Math.max(4/k,o.r+2),0,Math.PI*2); x.stroke(); });
-    layers.all=out(c); }
+  // 종합
+  { const {c,x}=layer(BGc);
+    heat(x,i=>use[i]?(As[i]-aRef-2)*0.06:0,COL.red,0.5); heat(x,i=>oilS[i]*1.2,COL.oil,0.75);
+    outline(x,0.55);
+    pores.forEach(o=>dotAt(x,o.cx,o.cy,Math.max(0.9/k,o.r*0.55),o.big?COL.poreBig:COL.pore));
+    spots.forEach(o=>shape(x,o,'#ffb547',0.3));
+    flakes.forEach(o=>dotAt(x,o.cx,o.cy,1.6/k,COL.flake));
+    grooveP.forEach(q=>dotAt(x,q.x,q.y,1.8/k,COL.groove));
+    x.save(); x.setLineDash([5/k,4/k]); x.strokeStyle=COL.fold; x.lineWidth=1.6/k; foldLines.forEach(([q1,q2])=>{ x.beginPath(); x.moveTo(q1.x,q1.y); x.lineTo(q2.x,q2.y); x.stroke(); }); x.restore();
+    acne.forEach(o=>ring(x,o.cx,o.cy,Math.max(4/k,o.r+2),COL.acne));
+    hud(x,`분석 면적 ${CM2(allIdx.length).toFixed(1)}cm² · 8개 부위`); layers.all=out(c); }
   // 부위 점수
-  { const {c,x}=layer('dim'); const col=v2=>v2>=75?'rgba(124,92,214,':v2>=60?'rgba(224,168,60,':'rgba(214,51,96,';
-    ZONES.forEach(kz=>{ const zz=zones[kz]; if(!zz) return; x.fillStyle=col(zz.all)+'.30)'; x.strokeStyle=col(zz.all)+'.95)'; x.lineWidth=2/k;
-      ZP[kz].forEach(p=>{ smoothPath(x,p); x.fill(); x.stroke(); }); });
+  { const {c,x}=layer(BGm); const col=v2=>v2>=75?'#8f74e6':v2>=60?'#f0b44c':'#e04a74';
+    ZONES.forEach(kz=>{ const zz=zones[kz]; if(!zz) return; x.fillStyle=col(zz.all); x.globalAlpha=0.34; ZP[kz].forEach(pl=>{ smoothPath(x,pl); x.fill(); }); x.globalAlpha=1; });
+    outline(x,0.8);
     const side={'오른볼':0,'왼볼':1};
     ZONES.forEach(kz=>{ const zz=zones[kz]; if(!zz) return; const polys=kz in side?[ZP[kz][0]]:ZP[kz];
-      const p=kz==='눈밑'||kz==='눈가'?[polys[0]]:polys, pts=[].concat(...p), cx=pts.reduce((a,q)=>a+q.x,0)/pts.length, cy=pts.reduce((a,q)=>a+q.y,0)/pts.length;
-      text(x,cx,cy,kz+' '+zz.all,zz.all>=75?'#4a2c8c':zz.all>=60?'#7c5713':'#a3123f'); });
-    layers.zone=out(c); }
-  // 색소(멜라닌) 지도 + 잡티 표시
-  { const sm=blur(Mc,1), {c,x}=chromo(sm,mR.med,Math.max(mR.sd,0.012),[252,246,238],[92,52,28]);
-    x.lineWidth=1.6/k; spots.forEach(o=>{ x.strokeStyle=['#2f6fde','#6b2fa3','#c2185b'][o.cls]; x.beginPath(); x.arc(o.cx,o.cy,Math.max(3/k,o.r+2),0,Math.PI*2); x.stroke(); });
-    layers.brown=out(c); }
-  // 붉은기(헤모글로빈) 지도 + 트러블 표시
-  { const sm=blur(Hc,1), {c,x}=chromo(sm,hR.med,Math.max(hR.sd,0.012),[252,244,244],[160,18,40]);
-    x.lineWidth=2/k; x.strokeStyle='#1f2f8a'; acne.forEach(o=>{ x.beginPath(); x.arc(o.cx,o.cy,Math.max(4/k,o.r+3),0,Math.PI*2); x.stroke(); });
-    layers.red=out(c); }
+      const pl=kz==='눈밑'||kz==='눈가'?[polys[0]]:polys, pts=[].concat(...pl), cx=pts.reduce((a,q)=>a+q.x,0)/pts.length, cy=pts.reduce((a,q)=>a+q.y,0)/pts.length;
+      text(x,cx,cy,kz+' '+zz.all,col(zz.all)); });
+    hud(x,'부위별 평균 점수'); layers.zone=out(c); }
+  // 성분 지도 (분석 영역만 성분 농도 색, 밖은 어둡게)
+  const chromo=(src,r0,sd,lo,hi)=>{ const c=document.createElement('canvas'); c.width=cw; c.height=ch; const x=c.getContext('2d'), im=x.createImageData(cw,ch), D=im.data;
+    for(let i=0;i<n;i++){ const j=i*4, gy=0.3*raw[j]+0.59*raw[j+1]+0.11*raw[j+2], dk=gy*0.22+6, m=soft[i], t=cl01(((src[i]-r0)/sd+1.5)/4.5);
+      for(let q=0;q<3;q++){ const v2=lo[q]+(hi[q]-lo[q])*t; D[j+q]=dk+(v2-dk)*m; } D[j+3]=255; }
+    x.putImageData(im,0,0); return layer(c); };
+  { const {c,x}=chromo(blur(Mc,1),mR.med,Math.max(mR.sd,0.012),[248,240,228],[78,40,18]); outline(x,0.35);
+    spots.forEach(o=>shape(x,o,COL.spot[o.cls],0)); hud(x,`멜라닌 · 잡티 ${spots.length}개 · ${spots.reduce((a,o)=>a+o.mm2,0).toFixed(1)}mm²`); layers.brown=out(c); }
+  { const {c,x}=chromo(blur(Hc,1),hR.med,Math.max(hR.sd,0.012),[250,238,238],[150,12,38]); outline(x,0.35);
+    acne.forEach(o=>ring(x,o.cx,o.cy,Math.max(4/k,o.r+2.5),'#29d3ff',2)); hud(x,`헤모글로빈 · 붉은 영역 ${(100*redFrac).toFixed(1)}%`); layers.red=out(c); }
   // 주름
-  { const {c,x}=layer('dim'); wrinkles.forEach(o=>{ const deep=o.dk>5; x.fillStyle=deep?'rgba(28,60,200,.95)':'rgba(70,140,255,.9)'; o.pix.forEach(p=>x.fillRect(p%cw,(p/cw)|0,1,1)); });
-    layers.wrinkle=out(c); }
+  { const {c,x}=layer(BGm); outline(x,0.35);
+    wrinkles.forEach(o=>{ x.fillStyle=o.dk>5?COL.wrDeep:COL.wr; x.globalAlpha=0.35; o.pix.forEach(q=>x.fillRect(q%cw-0.6,((q/cw)|0)-0.6,2.2,2.2)); x.globalAlpha=1; o.pix.forEach(q=>x.fillRect(q%cw,(q/cw)|0,1,1)); });
+    hud(x,`주름 ${wrinkles.length}개 · 총 ${wrLen.toFixed(1)}mm`); layers.wrinkle=out(c); }
   // 모공
-  { const {c,x}=layer('dim'); pores.forEach(o=>{ x.fillStyle=o.big?'rgba(194,24,91,.95)':'rgba(40,40,60,.9)'; x.beginPath(); x.arc(o.cx,o.cy,Math.max(1.4/k,o.big?o.r+0.8:o.r+0.4),0,Math.PI*2); x.fill(); });
-    layers.pore=out(c); }
-  // 피부결 (1mm 이하 굴곡 크기 지도)
-  { const {c,x}=layer('dim'); const t2=document.createElement('canvas'); t2.width=cw; t2.height=ch; const tx=t2.getContext('2d'), im=tx.createImageData(cw,ch);
+  { const {c,x}=layer(BGm); outline(x,0.35); pores.forEach(o=>dotAt(x,o.cx,o.cy,Math.max(1/k,o.big?o.r+0.6:o.r+0.3),o.big?COL.poreBig:COL.pore));
+    hud(x,`모공 ${isFinite(poreD)?poreD.toFixed(1):'-'}개/cm² · 평균 ${isFinite(poreDia)?poreDia.toFixed(2):'-'}mm`); layers.pore=out(c); }
+  // 피부결
+  { const {c,x}=layer(BGm); outline(x,0.35);
     const ab=new Float32Array(n); for(let i=0;i<n;i++) ab[i]=inCore(i)?Math.abs(HP[i]):0; const abS=blur(ab,RP(1.2));
-    for(let i=0;i<n;i++){ if(!inCore(i)) continue; const t=cl01((abS[i]-CAL.texture[0]*0.8)/(CAL.texture[1]*1.2)); im.data[i*4]=110; im.data[i*4+1]=50; im.data[i*4+2]=170; im.data[i*4+3]=t*200; }
-    tx.putImageData(im,0,0); x.drawImage(t2,0,0); layers.texture=out(c); }
+    heat(x,i=>inCore(i)?(abS[i]-CAL.texture[0]*0.8)/(CAL.texture[1]*1.2):0,COL.tex,0.8);
+    hud(x,`거칠기 ${isFinite(Sa)?Sa.toFixed(2):'-'} · 1mm 이하 굴곡`); layers.texture=out(c); }
   // 유분
-  { const {c,x}=layer(); x.fillStyle='rgba(255,214,0,.9)'; for(let i=0;i<n;i++) if(zl[i]>=0&&isOil(i)) x.fillRect(i%cw,(i/cw)|0,1,1); layers.oil=out(c); }
+  { const {c,x}=layer(BGm); outline(x,0.35); heat(x,i=>oilS[i]*1.3,COL.oil,0.9); hud(x,`번들 면적 ${(100*oilF).toFixed(1)}% · 이마 · 코`); layers.oil=out(c); }
   // 눈가 · 탄력
-  { const {c,x}=layer(); x.lineWidth=2/k;
+  { const {c,x}=layer(BGc);
+    x.strokeStyle='rgba(255,255,255,.85)'; x.lineWidth=1.2/k;
+    EYES.forEach(e=>[e.up,e.lo].forEach(ids=>{ x.beginPath(); ids.forEach((id,j)=>{ const q=P(id); j?x.lineTo(q.x,q.y):x.moveTo(q.x,q.y); }); x.stroke(); }));
+    x.save(); x.setLineDash([4/k,3/k]); x.strokeStyle='#ffd23f'; x.lineWidth=1.4/k;
+    canth.forEach(([a,b])=>{ const ex2=(b.x-a.x)*0.25, ey2=(b.y-a.y)*0.25; x.beginPath(); x.moveTo(a.x-ex2,a.y-ey2); x.lineTo(b.x+ex2,b.y+ey2); x.stroke(); }); x.restore();
     eyeMM.forEach(e=>{ const up={x:e.c.x+dn.x*e.up,y:e.c.y+dn.y*e.up}, lo={x:e.c.x+dn.x*e.lo,y:e.c.y+dn.y*e.lo};
-      x.strokeStyle='rgba(255,255,255,.95)'; x.beginPath(); x.moveTo(up.x,up.y); x.lineTo(lo.x,lo.y); x.stroke();
-      x.fillStyle='#ffd23f'; x.beginPath(); x.arc(e.c.x,e.c.y,2.5/k*1.5,0,Math.PI*2); x.fill();
-      x.strokeStyle='#ffd23f'; [up,lo].forEach(q=>{ x.beginPath(); x.moveTo(q.x-ax.x*0.07*d,q.y-ax.y*0.07*d); x.lineTo(q.x+ax.x*0.07*d,q.y+ax.y*0.07*d); x.stroke(); });
-      text(x,e.c.x-dn.x*0.28*d,e.c.y-dn.y*0.28*d,'윗꺼풀 '+e.mrd1.toFixed(1)+'mm'); });
-    x.fillStyle='rgba(80,190,255,.95)'; grooveP.forEach(p=>{ x.beginPath(); x.arc(p.x,p.y,2.4/k*1.4,0,Math.PI*2); x.fill(); });
-    x.save(); x.setLineDash([6/k,5/k]); x.strokeStyle='rgba(255,150,40,.95)'; foldLines.forEach(([p,q])=>{ x.beginPath(); x.moveTo(p.x,p.y); x.lineTo(q.x,q.y); x.stroke(); }); x.restore();
-    x.fillStyle='rgba(255,255,255,.95)'; flakes.forEach(p=>{ x.beginPath(); x.arc(p.cx,p.cy,1.8/k*1.4,0,Math.PI*2); x.fill(); });
-    layers.eye=out(c); }
-  const base=layer().c; mark('layers');
+      x.strokeStyle='#5fe1ff'; x.lineWidth=1.6/k; x.beginPath(); x.moveTo(e.c.x,e.c.y); x.lineTo(up.x,up.y); x.stroke();
+      [up].forEach(q=>{ x.beginPath(); x.moveTo(q.x-ax.x*0.05*d,q.y-ax.y*0.05*d); x.lineTo(q.x+ax.x*0.05*d,q.y+ax.y*0.05*d); x.stroke(); });
+      dotAt(x,e.c.x,e.c.y,2.2/k,'#5fe1ff');
+      text(x,e.c.x-dn.x*0.3*d,e.c.y-dn.y*0.3*d,'MRD1 '+e.mrd1.toFixed(1)+'mm','#5fe1ff'); });
+    canth.forEach(([a,b],j)=>{ if(tiltA[j]==null) return; text(x,b.x+(b.x-a.x)*0.1+dn.x*0.22*d,b.y+(b.y-a.y)*0.1+dn.y*0.22*d,'눈꼬리 '+(tiltA[j]>=0?'+':'')+tiltA[j].toFixed(1)+'°','#ffd23f'); });
+    grooveP.forEach(q=>dotAt(x,q.x,q.y,1.8/k,COL.groove));
+    x.save(); x.setLineDash([5/k,4/k]); x.strokeStyle=COL.fold; x.lineWidth=1.6/k; foldLines.forEach(([q1,q2])=>{ x.beginPath(); x.moveTo(q1.x,q1.y); x.lineTo(q2.x,q2.y); x.stroke(); }); x.restore();
+    flakes.forEach(o=>dotAt(x,o.cx,o.cy,1.6/k,COL.flake));
+    hud(x,`홍채 11.7mm 기준 측정`); layers.eye=out(c); }
+  const base=layer(cv).c; mark('layers');
 
   const pro={ita:fx(itaDeg),itaCls,MI:fx(MI),EI:fx(EI),
     spotN:spots.length,spotCls:[0,1,2].map(c2=>spots.filter(o=>o.cls===c2).length),spotMM2:fx(spots.reduce((a,o)=>a+o.mm2,0)),patchPct:fx(spotZ.length?100*patchN/spotZ.length:NaN),
@@ -1500,22 +1543,21 @@ const ZCOLS=[['spots','잡티'],['redness','붉은기'],['pores','모공'],['wri
 const LGROUPS=[['한눈에',['all']],['색 · 톤',['brown','red']],['피부 표면',['wrinkle','pore','texture','oil']],['부위 · 눈가',['zone','eye']]];
 const lgOf=k=>LGROUPS.find(g=>g[1].includes(k));
 const lyrSub=k=>{ const g=lgOf(k); return g[1].length<2?'':g[1].map(x=>`<button data-l="${x}" aria-pressed="${x===k}">${LAYERS.find(y=>y[0]===x)[1]}</button>`).join(''); };
-function layerInfo(k,a){ const p=a.pro, dot=(c,t,shape)=>`<span><i style="${shape==='ring'?`border:2px solid ${c};border-radius:50%;background:none`:shape==='dot'?`background:${c};border-radius:50%;width:8px;height:8px;border:1px solid rgba(0,0,0,.15)`:`background:${c}`}"></i>${t}</span>`;
+function layerInfo(k,a){ const p=a.pro, d=a.detail||{}, dot=(c,t,shape)=>`<span><i style="${shape==='ring'?`border:2px solid ${c};border-radius:50%;background:none`:shape==='dot'?`background:${c};border-radius:50%;width:8px;height:8px;border:1px solid rgba(0,0,0,.2)`:shape==='line'?`border-top:2px dashed ${c};height:0;width:14px;border-radius:0;background:none`:`background:${c}`}"></i>${t}</span>`;
   return {
-    all:['얼굴 윤곽에 맞춘 영역 안의 피부만 분석했어요. 눈 · 눈썹 · 입술 · 콧구멍과 머리카락은 뺐어요.',
-      [...Object.entries(REG_COL).map(([z,c])=>`<span><i style="border:2px solid ${c};border-radius:4px;background:none"></i>${z}</span>`),
-       dot('#141414',`모공 ${p.poreN}`,'dot'),dot('rgb(176,96,40)',`잡티 ${p.spotN}곳`,'dot'),dot('#ff4d5e',`붉은 트러블 ${p.acneN}곳`,'ring'),dot('rgba(225,40,60,.5)','붉은기'),dot('#ffd600','번들거림'),
-       dot('rgb(120,130,160)','제외(머리카락 등)'),dot('#fff',`각질 ${a.flakeCount||0}곳`,'dot'),dot('rgb(80,190,255)','눈밑 골','dot'),
-       `<span><i style="border-top:2px dashed rgb(255,150,40);height:0;width:14px;background:none"></i>팔자선</span>`]],
-    zone:['부위마다 잡티 · 붉은기 · 모공 · 주름 · 유분 · 피부결 · 트러블을 따로 계산해 평균 낸 점수예요. 오른볼 · 왼볼은 본인 기준이에요(거울 보기).',[dot('#7c5cd6','75점 이상'),dot('#e0a83c','60~74점'),dot('#d63360','60점 미만')]],
-    brown:['사진 색을 멜라닌(갈색 색소) · 헤모글로빈(혈색) · 음영 세 성분으로 나눠 멜라닌만 보여 줘요. 진한 갈색일수록 색소가 많고, 그림자 영향은 빠져 있어요.',
-      [dot('#2f6fde',`작은 점(지름 2mm 미만) ${p.spotCls[0]}`,'ring'),dot('#6b2fa3',`잡티(2~5mm) ${p.spotCls[1]}`,'ring'),dot('#c2185b',`큰 색소(5mm 이상) ${p.spotCls[2]}`,'ring')]],
-    red:['같은 방법으로 헤모글로빈(혈색) 성분만 보여 줘요. 진한 빨강일수록 붉은기가 몰린 곳이에요.',[dot('#1f2f8a',`붉은 트러블 ${p.acneN}곳`,'ring')]],
-    wrinkle:['피부 굴곡이 만드는 가늘고 긴 그림자 선을 곡률 필터로 찾아요. 이마는 가로 방향 선만 세요.',[dot('rgb(28,60,200)','깊은 선'),dot('rgb(70,140,255)','얕은 선'),`<span>총 ${p.wrLen}mm · ${p.wrN}개</span>`]],
-    pore:['1mm 범위보다 어두운 작은 점을 모공으로 세요. 크기는 홍채 지름으로 환산한 실제 크기예요.',[dot('#c2185b',`큰 모공(지름 약 0.56mm 이상) ${p.poreBig}`,'dot'),dot('#28283c',`작은 모공 ${p.poreN-p.poreBig}`,'dot')]],
-    texture:['1mm 이하 미세한 굴곡의 크기를 색으로 보여 줘요. 진한 보라일수록 결이 거친 곳이에요.',[dot('rgba(110,50,170,.8)','결이 거친 곳')]],
-    oil:['빛이 그대로 반사돼 하얗게 빛나는 부분(번들거림)이에요.',[dot('#ffd600',`번들 면적 ${p.oilPct}% (이마 · 코)`)]],
-    eye:['홍채 지름(약 11.7mm)을 자로 써서 동공 중심에서 눈꺼풀까지를 mm로 재요.',[dot('#ffd23f','동공 중심 · 눈꺼풀 위치','dot'),dot('rgb(80,190,255)','눈밑 골','dot'),`<span><i style="border-top:2px dashed rgb(255,150,40);height:0;width:14px;background:none"></i>팔자 확인선</span>`,dot('#fff',`각질 ${a.flakeCount||0}곳`,'dot')]]
+    all:['얼굴 윤곽에 맞춘 8개 부위의 피부만 분석했어요. 눈 · 눈썹 · 입술 · 콧구멍 · 머리카락은 빼고, 분석하지 않은 곳은 어둡게 처리했어요.',
+      [dot('#ffb547',`잡티 ${p.spotN}곳`),dot('#3fe6ff',`모공 ${p.poreN}`,'dot'),dot('#ff4f7b',`붉은 트러블 ${p.acneN}곳`,'ring'),dot('rgba(255,64,96,.55)','붉은기'),dot('rgba(255,206,40,.85)','번들거림'),
+       dot('#fff',`각질 ${a.flakeCount||0}곳`,'dot'),dot('#8fe0ff','눈밑 골','dot'),dot('#ffae4a','팔자 확인선','line')]],
+    zone:['부위마다 잡티 · 붉은기 · 모공 · 주름 · 유분 · 피부결 · 트러블을 따로 계산해 평균 낸 점수예요. 오른볼 · 왼볼은 본인 기준이에요(거울 보기).',[dot('#8f74e6','75점 이상'),dot('#f0b44c','60~74점'),dot('#e04a74','60점 미만')]],
+    brown:['사진 색을 멜라닌 · 헤모글로빈 · 음영 세 성분으로 나눠 멜라닌만 보여 줘요. 진한 갈색일수록 색소가 많고, 그림자 영향은 빠져 있어요.',
+      [dot('#5fe1ff',`작은 점(지름 2mm 미만) ${p.spotCls[0]}`,'ring'),dot('#3d8bff',`잡티(2~5mm) ${p.spotCls[1]}`,'ring'),dot('#ff5fae',`큰 색소(5mm 이상) ${p.spotCls[2]}`,'ring')]],
+    red:['같은 방법으로 헤모글로빈(혈색) 성분만 보여 줘요. 진한 빨강일수록 붉은기가 몰린 곳이에요.',[dot('#29d3ff',`붉은 트러블 ${p.acneN}곳`,'ring')]],
+    wrinkle:['피부 굴곡이 만드는 가늘고 긴 그림자 선을 곡률 필터로 찾아요. 이마는 가로 방향 선만 세요.',[dot('#2348e0','깊은 선'),dot('#4c8dff','얕은 선'),`<span>총 ${p.wrLen}mm · ${p.wrN}개</span>`]],
+    pore:['1mm 범위보다 어두운 작은 점을 모공으로 세요. 크기는 홍채 지름으로 환산한 실제 크기예요.',[dot('#ff5fae',`큰 모공(지름 약 0.56mm 이상) ${p.poreBig}`,'dot'),dot('#3fe6ff',`작은 모공 ${p.poreN-p.poreBig}`,'dot')]],
+    texture:['1mm 이하 미세한 굴곡의 크기를 색으로 보여 줘요. 진한 보라일수록 결이 거친 곳이에요.',[dot('rgba(168,110,255,.85)','결이 거친 곳')]],
+    oil:['빛이 그대로 반사돼 하얗게 빛나는 부분(번들거림)이에요.',[dot('rgba(255,206,40,.9)',`번들 면적 ${p.oilPct}% (이마 · 코)`)]],
+    eye:['눈꺼풀 높이는 타고난 생김새(홑꺼풀 · 두툼한 눈꺼풀) 영향이 커서, 나이 들며 바뀌는 눈꼬리 기울기와 바깥쪽 눈꺼풀 덮임을 함께 봐요. 홍채 지름(약 11.7mm)을 자로 써서 mm로 재요.',
+      [dot('#5fe1ff',`동공 중심 ~ 윗눈꺼풀(MRD1) ${d.mrd1!=null?d.mrd1+'mm':'-'}`,'dot'),dot('#ffd23f',`눈꼬리 기울기 ${d.tilt!=null?(d.tilt>=0?'+':'')+d.tilt+'°':'-'}`,'line'),dot('#8fe0ff','눈밑 골','dot'),dot('#ffae4a','팔자 확인선','line'),dot('#fff',`각질 ${a.flakeCount||0}곳`,'dot')]]
   }[k]; }
 function analysisHTML(){
   const a=U.ana, q=a.quality, v=U.scan;
@@ -1555,7 +1597,9 @@ function analysisHTML(){
       <div class="prow"><span>모공</span><b>${f1(p.poreD)}개/cm² · 평균 ${f1(p.poreDia)}mm</b><em>전체 ${p.poreN}개 중 큰 모공 ${p.poreBig}개</em></div>
       <div class="prow"><span>주름</span><b>총 ${f1(p.wrLen)}mm · ${f1(p.wrD)}mm/cm²</b><em>이마 ${f1(wz['이마'])} · 미간 ${f1(wz['미간'])} · 눈가 ${f1(wz['눈가'])}mm · 주름 단계 ${p.wrGrade==null?'-':p.wrGrade} / 3</em></div>
       <div class="prow"><span>피부결</span><b>거칠기 ${f1(p.Sa)}</b><em>1mm 이하 굴곡의 평균 크기예요. 질감 대비 ${f1(p.glcmC)} · 균일도 ${f1(p.glcmH)}</em></div>
-      <div class="prow"><span>윗눈꺼풀</span><b>${d.mrd1!=null?d.mrd1+' mm':'-'}</b><em>동공 중심 ~ 윗눈꺼풀 거리 · 보통 4~5mm, 작을수록 처짐</em></div>
+      <div class="prow"><span>윗눈꺼풀</span><b>${d.mrd1!=null?d.mrd1+' mm':'-'}</b><em>동공 중심 ~ 윗눈꺼풀 거리(MRD1) · 타고난 눈 모양 영향이 커서 눈꼬리 · 바깥쪽 덮임과 함께 판단해요</em></div>
+      <div class="prow"><span>눈꼬리 기울기</span><b>${d.tilt!=null?(d.tilt>=0?'+':'')+d.tilt+'°':'-'}</b><em>바깥 눈꼬리가 안쪽보다 높은 정도 · 나이 들며 바깥 눈꼬리가 내려가면 작아져요</em></div>
+      <div class="prow"><span>바깥쪽 덮임</span><b>${d.hood!=null?Math.round(d.hood*100)+'%':'-'}</b><em>눈 바깥쪽 높이 ÷ 가운데 높이 · 윗눈꺼풀 바깥쪽이 처지면 낮아져요</em></div>
       <div class="prow"><span>아랫눈꺼풀</span><b>${d.show!=null?(d.show>0?'흰자 '+d.show+' mm':'흰자 안 보임'):'-'}</b><em>홍채 아래 흰자가 보이면 아래 눈꺼풀이 늘어진 신호</em></div>
       <div class="prow"><span>눈밑 지방</span><b>${d.bag!=null?'골 깊이 '+d.bag:'-'}</b><em>볼록한 띠 아래 그림자 골의 진하기(L*) · 조명이 정면이면 낮게 나올 수 있어요</em></div>
       <div class="prow"><span>탄력(추정)</span><b>${d.fold!=null?'팔자 그림자 '+d.fold:'-'}</b><em>팔자 주름 그림자와 입꼬리 처짐으로 추정해요</em></div>
@@ -1642,7 +1686,7 @@ function bind(){
     const reduce=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const t0=Date.now(), wait=reduce?300:2300;
     if(U.photo){ (async()=>{ await loadMP(); if(!MP.ready) return analyzePhoto(U.photo);
-        try{ if(U.frames&&U.frames.length>1){ const sf=stackFrames(U.frames); if(sf) return analyzeFace(sf.img,sf.lm,{frames:{used:sf.used,total:sf.total}}); }
+        try{ if(U.frames&&U.frames.length>1){ const sf=stackFrames(U.frames); if(sf) return analyzeFace(sf.img,sf.lm,{frames:{used:sf.used,total:sf.total},cam:sf.img.width+'×'+sf.img.height}); }
           const im=await loadImg(U.photo); const r=MP.img.detect(im); const lm=r&&r.faceLandmarks&&r.faceLandmarks[0];
           return lm?analyzeFace(im,lm):{ok:false,reason:'얼굴을 찾지 못했어요. 정면 얼굴이 잘 보이게 다시 찍어 주세요.'}; }
         catch(e){ return analyzePhoto(U.photo); } })().then(res=>{ setTimeout(()=>{
